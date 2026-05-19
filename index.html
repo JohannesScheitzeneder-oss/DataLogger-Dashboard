@@ -1,85 +1,177 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <title>SPI Datalogger - Live Graph</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f4; }
-        #container { width: 80%; margin: auto; background: white; padding: 20px; border-radius: 8px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #007bb5; color: white; border: none; border-radius: 4px; }
-    </style>
-</head>
-<body>
-
 <div id="container">
-    <h1>🛰️ SPI Datalogger Live-Ansicht</h1>
+    <h1>🛰️ SPI Datalogger Live-Dashboard</h1>
     <button id="connectBtn">Logger verbinden</button>
+    <button id="downloadBtn" onclick="downloadCSV()" style="background:#e67e22; color:white; margin-left:10px;" disabled>Daten als CSV speichern</button>
     <br><br>
-    <canvas id="liveChart" width="400" height="200"></canvas>
 </div>
 
 <script>
-// 1. Chart.js initialisieren (Zeit-Amplituden-Graph)
-const ctx = document.getElementById('liveChart').getContext('2d');
-const liveChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-        labels: [], // Hier kommen die Zeitstempel hin (X-Achse)
-        datasets: [{
-            label: 'SPI Amplitude',
-            data: [], // Hier kommen die Messwerte hin (Y-Achse)
-            borderColor: '#ff6384',
-            borderWidth: 2,
-            fill: false,
-            tension: 0.1 // Macht die Linie leicht geschmeidig
-        }]
-    },
-    options: {
-        scales: {
-            x: { title: { display: true, text: 'Zeit (s)' } },
-            y: { title: { display: true, text: 'Amplitude' } }
-        }
-    }
-});
+// Definition der Datenstruktur anhand deiner 1. CSV-Zeile
+const SENSOR_NAMES = [
+    "accelX", "accelY", "accelZ", "temp", "hum", "press", 
+    "lat", "lon", "alt", "speed", "sats", "thermocouple", "soundLevel", "battVoltage"
+];
 
-// 2. Bluetooth Verbindung (NUS Protokoll)
+let charts = {};               // Speicher für alle dynamisch erstellten Diagramme
+let activeSensors = new Set(); // Liste der aktuell aktiven Sensoren (Wert ungleich 0)
+let csvDatenSpeicher = [];     // Array, das alle reingekommenen Zeilen für den Download speichert
+
+// Füge den Header als erste Zeile in den Speicher ein
+csvDatenSpeicher.push("timestamp," + SENSOR_NAMES.join(","));
+
+// FUNKTION: Erstellt ein neues Diagramm auf der Webseite, sobald ein Sensor aktiv wird
+function createChartOnDemand(sensorName) {
+    if (document.getElementById(`container-${sensorName}`)) return; // Falls es schon existiert
+
+    // 1. HTML-Kasten (Card) für das Diagramm erzeugen
+    let card = document.createElement('div');
+    card.id = `container-${sensorName}`;
+    card.style = "background: white; margin: 20px auto; padding: 15px; width: 85%; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); font-family: Arial, sans-serif;";
+    card.innerHTML = `<h3 style="margin-top:0; color:#333;">📈 Sensor: ${sensorName}</h3><canvas id="chart-${sensorName}"></canvas>`;
+    document.getElementById('container').appendChild(card); // An das Hauptfenster anhängen
+
+    // 2. Chart.js für diesen spezifischen Sensor initialisieren
+    let ctx = document.getElementById(`chart-${sensorName}`).getContext('2d');
+    
+    // Zufällige Farbe für die Linie generieren, damit sich die Graphen unterscheiden
+    let farbe = '#' + Math.floor(Math.random()*16777215).toString(16);
+
+    charts[sensorName] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [], // X-Achse (Zeitstempel)
+            datasets: [{
+                label: sensorName,
+                data: [], // Y-Achse (Messwerte)
+                borderColor: farbe,
+                backgroundColor: farbe + "1A", // Transparente Füllung unter der Linie
+                borderWidth: 2,
+                fill: true,
+                pointRadius: 1,      // Kleine Punkte für bessere Performance
+                tension: 0.1         // Leicht geschmeidige Kurve
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { 
+                    title: { display: true, text: 'Zeitstempel (UTC)' },
+                    ticks: { maxTicksLimit: 5 } // Verhindert, dass die X-Achse mit Text überlädt
+                },
+                y: { 
+                    title: { display: true, text: 'Messwert' },
+                    beginAtZero: false 
+                }
+            }
+        }
+    });
+}
+
+// BLUETOOTH-VERBINDUNG STARTEN
 document.getElementById('connectBtn').addEventListener('click', async () => {
     try {
+        // Suche nach dem Arduino mit dem korrekten Namen und Service
         const device = await navigator.bluetooth.requestDevice({
             filters: [{ name: 'SPI-Datalogger' }],
             optionalServices: ['6E400001-B5A3-F393-E0A9-E50E24DCCA9E']
         });
         
+        // Status auf dem Button anzeigen
+        document.getElementById('connectBtn').innerText = "Verbinde...";
+        
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
         const characteristic = await service.getCharacteristic('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
         
-        // Sobald Daten kommen, Funktion ausführen
-        characteristic.startNotifications();
+        await characteristic.startNotifications();
+        let datenPuffer = ""; // Puffer für zerstückelte Bluetooth-Pakete
+
+        // Event-Listener: Wird jedes Mal ausgeführt, wenn der Arduino Daten schickt
         characteristic.addEventListener('characteristicvaluechanged', (event) => {
             let decoder = new TextDecoder('utf-8');
-            let rawData = decoder.decode(event.target.value); // z.B. "12.5;450"
+            datenPuffer += decoder.decode(event.target.value);
             
-            let parts = rawData.trim().split(';');
-            if(parts.length === 2) {
-                let zeit = parts[0];
-                let amplitude = parseFloat(parts[1]);
+            // Wenn eine komplette Zeile im Puffer ist (\n)
+            if (datenPuffer.includes('\n')) {
+                let zeilen = datenPuffer.split('\n');
+                datenPuffer = zeilen.pop(); // Unvollständigen Rest zurück in den Puffer legen
                 
-                // Daten dem Graphen hinzufügen
-                liveChart.data.labels.push(zeit);
-                liveChart.data.datasets[0].data.push(amplitude);
-                
-                // Graphen aktualisieren
-                liveChart.update();
+                zeilen.forEach(zeile => {
+                    let bereinigteZeile = zeile.trim();
+                    if (bereinigteZeile.length === 0) return;
+
+                    // Für den späteren CSV-Download zwischenspeichern
+                    csvDatenSpeicher.push(bereinigteZeile);
+
+                    // Zeile anhand des Kommas aufteilen
+                    let parts = bereinigteZeile.split(',');
+                    
+                    // Sicherheitscheck: Es müssen mindestens der Zeitstempel + alle 14 Sensorwerte da sein
+                    if(parts.length >= 15) { 
+                        let timestamp = parts[0]; // Erste Spalte ist immer die Zeit
+                        
+                        // Schleife durch alle 14 Sensorkanäle
+                        for(let i = 0; i < SENSOR_NAMES.length; i++) {
+                            let sensorName = SENSOR_NAMES[i];
+                            let wert = parseFloat(parts[i + 1]); // i+1, weil Index 0 der Timestamp ist
+                            
+                            // INTELLIGENTER FILTER: Wenn der Wert nicht 0 (oder 0.0) ist, ist der Sensor aktiv!
+                            if (wert !== 0.0 && !isNaN(wert)) {
+                                if (!activeSensors.has(sensorName)) {
+                                    activeSensors.add(sensorName);
+                                    createChartOnDemand(sensorName); // Erstelle das Diagramm erst jetzt live!
+                                }
+                            }
+                            
+                            // Wenn für diesen Sensor ein Diagramm existiert, Daten einspeisen
+                            if (charts[sensorName]) {
+                                charts[sensorName].data.labels.push(timestamp);
+                                charts[sensorName].data.datasets[0].data.push(wert);
+                                
+                                // Begrenzung: Nur die letzten 50 Messwerte anzeigen, um den Browser nicht zu verlangsamen
+                                if (charts[sensorName].data.labels.length > 50) {
+                                    charts[sensorName].data.labels.shift();
+                                    charts[sensorName].data.datasets[0].data.shift();
+                                }
+                                
+                                // Diagramm ohne ruckelnde Animationen updaten
+                                charts[sensorName].update('none');
+                            }
+                        }
+                    }
+                });
             }
         });
         
+        // Optisches Feedback bei erfolgreicher Verbindung
         document.getElementById('connectBtn').innerText = "Verbunden! 🟢";
+        document.getElementById('connectBtn').style.background = "#2ecc71";
+        
+        // Aktivierung des Download-Buttons (falls du einen in deinem HTML hast)
+        if(document.getElementById('downloadBtn')) {
+            document.getElementById('downloadBtn').disabled = false;
+        }
+
     } catch (error) {
-        console.log("Fehler: " + error);
+        console.log("BLE Fehler: " + error);
+        document.getElementById('connectBtn').innerText = "Logger verbinden";
+        alert("Verbindung fehlgeschlagen. Bitte Bluetooth am Gerät und PC/Handy prüfen!");
     }
 });
+
+// OPTIONAL: Funktion für den CSV-Download (Falls du einen Button mit id="downloadBtn" einbaust)
+function downloadCSV() {
+    if(csvDatenSpeicher.length <= 1) {
+        alert("Noch keine Daten zum Herunterladen empfangen!");
+        return;
+    }
+    let csvContent = "data:text/csv;charset=utf-8," + csvDatenSpeicher.join("\n");
+    let encodedUri = encodeURI(csvContent);
+    let link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "live_datalogger_export.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
 </script>
-</body>
-</html>
