@@ -1,7 +1,67 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛰️ SPI Datalogger Live-Dashboard</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f7fb;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        #container {
+            max-width: 1000px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 25px;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #connectBtn {
+            background-color: #3498db;
+            color: white;
+        }
+        #connectBtn:hover {
+            background-color: #2980b9;
+        }
+        #downloadBtn {
+            background-color: #e67e22;
+            color: white;
+            margin-left: 10px;
+        }
+        #downloadBtn:hover:not(:disabled) {
+            background-color: #d35400;
+        }
+        #downloadBtn:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+
 <div id="container">
     <h1>🛰️ SPI Datalogger Live-Dashboard</h1>
     <button id="connectBtn">Logger verbinden</button>
-    <button id="downloadBtn" onclick="downloadCSV()" style="background:#e67e22; color:white; margin-left:10px;" disabled>Daten als CSV speichern</button>
+    <button id="downloadBtn" onclick="downloadCSV()" disabled>Daten als CSV speichern</button>
     <br><br>
 </div>
 
@@ -27,7 +87,7 @@ function createChartOnDemand(sensorName) {
     let card = document.createElement('div');
     card.id = `container-${sensorName}`;
     card.style = "background: white; margin: 20px auto; padding: 15px; width: 85%; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); font-family: Arial, sans-serif;";
-    card.innerHTML = `<h3 style="margin-top:0; color:#333;">📈 Sensor: ${sensorName}</h3><canvas id="chart-${sensorName}"></canvas>`;
+    card.innerHTML = `<h3 style="margin-top:0; color:#333; text-align:left; padding-left:10px;">📈 Sensor: ${sensorName}</h3><canvas id="chart-${sensorName}"></canvas>`;
     document.getElementById('container').appendChild(card); // An das Hauptfenster anhängen
 
     // 2. Chart.js für diesen spezifischen Sensor initialisieren
@@ -147,7 +207,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         document.getElementById('connectBtn').innerText = "Verbunden! 🟢";
         document.getElementById('connectBtn').style.background = "#2ecc71";
         
-        // Aktivierung des Download-Buttons (falls du einen in deinem HTML hast)
+        // Aktivierung des Download-Buttons
         if(document.getElementById('downloadBtn')) {
             document.getElementById('downloadBtn').disabled = false;
         }
@@ -159,7 +219,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     }
 });
 
-// OPTIONAL: Funktion für den CSV-Download (Falls du einen Button mit id="downloadBtn" einbaust)
+// Funktion für den CSV-Download
 function downloadCSV() {
     if(csvDatenSpeicher.length <= 1) {
         alert("Noch keine Daten zum Herunterladen empfangen!");
@@ -175,3 +235,5 @@ function downloadCSV() {
     document.body.removeChild(link);
 }
 </script>
+</body>
+</html>
