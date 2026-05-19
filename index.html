@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>SPI Datalogger - Live Graph</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f4; }
+        #container { width: 80%; margin: auto; background: white; padding: 20px; border-radius: 8px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #007bb5; color: white; border: none; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <h1>🛰️ SPI Datalogger Live-Ansicht</h1>
+    <button id="connectBtn">Logger verbinden</button>
+    <br><br>
+    <canvas id="liveChart" width="400" height="200"></canvas>
+</div>
+
+<script>
+// 1. Chart.js initialisieren (Zeit-Amplituden-Graph)
+const ctx = document.getElementById('liveChart').getContext('2d');
+const liveChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: [], // Hier kommen die Zeitstempel hin (X-Achse)
+        datasets: [{
+            label: 'SPI Amplitude',
+            data: [], // Hier kommen die Messwerte hin (Y-Achse)
+            borderColor: '#ff6384',
+            borderWidth: 2,
+            fill: false,
+            tension: 0.1 // Macht die Linie leicht geschmeidig
+        }]
+    },
+    options: {
+        scales: {
+            x: { title: { display: true, text: 'Zeit (s)' } },
+            y: { title: { display: true, text: 'Amplitude' } }
+        }
+    }
+});
+
+// 2. Bluetooth Verbindung (NUS Protokoll)
+document.getElementById('connectBtn').addEventListener('click', async () => {
+    try {
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [{ name: 'SPI-Datalogger' }],
+            optionalServices: ['6E400001-B5A3-F393-E0A9-E50E24DCCA9E']
+        });
+        
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
+        const characteristic = await service.getCharacteristic('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
+        
+        // Sobald Daten kommen, Funktion ausführen
+        characteristic.startNotifications();
+        characteristic.addEventListener('characteristicvaluechanged', (event) => {
+            let decoder = new TextDecoder('utf-8');
+            let rawData = decoder.decode(event.target.value); // z.B. "12.5;450"
+            
+            let parts = rawData.trim().split(';');
+            if(parts.length === 2) {
+                let zeit = parts[0];
+                let amplitude = parseFloat(parts[1]);
+                
+                // Daten dem Graphen hinzufügen
+                liveChart.data.labels.push(zeit);
+                liveChart.data.datasets[0].data.push(amplitude);
+                
+                // Graphen aktualisieren
+                liveChart.update();
+            }
+        });
+        
+        document.getElementById('connectBtn').innerText = "Verbunden! 🟢";
+    } catch (error) {
+        console.log("Fehler: " + error);
+    }
+});
+</script>
+</body>
+</html>
