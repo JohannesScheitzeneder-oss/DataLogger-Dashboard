@@ -25,52 +25,79 @@
         h1 {
             color: #2c3e50;
             margin-bottom: 25px;
+            font-weight: 700;
         }
-        /* Einheitliches Button-Design */
-        button, .file-upload-btn {
-            padding: 12px 24px;
-            font-size: 16px;
-            font-weight: bold;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: inline-block;
-        }
-        #connectBtn { background-color: #3498db; color: white; }
-        #connectBtn:hover:not(:disabled) { background-color: #2980b9; }
-        
-        #downloadBtn { background-color: #e67e22; color: white; margin-left: 10px; }
-        #downloadBtn:hover:not(:disabled) { background-color: #d35400; }
-        
-        /* Neuer lila Button für die GPS-Karte */
-        #mapToggleBtn { background-color: #9b59b6; color: white; margin-left: 10px; }
-        #mapToggleBtn:hover:not(:disabled) { background-color: #8e44ad; }
 
+        /* NEU: Schicker Container für die Steuerzentrale */
+        .control-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            align-items: center;
+        }
+
+        /* Einheitliches, modernes Button-Design */
+        button, .file-upload-btn {
+            box-sizing: border-box;
+            width: 100%; /* Füllt die Raster-Zelle perfekt aus */
+            padding: 14px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px; /* Abstand zwischen Icon und Text */
+            text-decoration: none;
+        }
+
+        /* Farb-Themen für die Buttons */
+        #connectBtn { background-color: #3498db; color: white; }
+        #connectBtn:hover:not(:disabled) { background-color: #2980b9; transform: translateY(-1px); }
+        
+        .file-upload-btn { background-color: #2ecc71; color: white; margin: 0; }
+        .file-upload-btn:hover:not(.disabled) { background-color: #27ae60; transform: translateY(-1px); }
+        
+        #downloadBtn { background-color: #e67e22; color: white; }
+        #downloadBtn:hover:not(:disabled) { background-color: #d35400; transform: translateY(-1px); }
+        
+        #mapToggleBtn { background-color: #9b59b6; color: white; }
+        #mapToggleBtn:hover:not(:disabled) { background-color: #8e44ad; transform: translateY(-1px); }
+
+        /* Globaler Deaktivierungs-Status (wird weich ausgegraut) */
         button:disabled, .file-upload-btn.disabled {
-            background-color: #bdc3c7 !important;
+            background-color: #e0e4e8 !important;
+            color: #8a94a0 !important;
             cursor: not-allowed !important;
+            transform: none !important;
             box-shadow: none !important;
         }
-        .file-upload-btn { background-color: #2ecc71; color: white; margin-left: 10px; }
-        .file-upload-btn:hover:not(.disabled) { background-color: #27ae60; }
+        
         #csvFileInput { display: none; }
 
         /* Karten-Container-Styling */
         #mapContainer {
-            display: none; /* Karte bleibt strikt unsichtbar, bis der Button geklickt wird */
+            display: none;
             background: white;
             margin: 20px auto;
             padding: 15px;
-            width: 85%;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
             text-align: left;
         }
         #map {
             width: 100%;
-            height: 450px;
+            height: 480px;
             border-radius: 6px;
             margin-top: 10px;
         }
@@ -81,16 +108,19 @@
 <div id="container">
     <h1>🛰️ DataLogger Live-Dashboard</h1>
     
-    <button id="connectBtn">Logger verbinden</button>
-    <label for="csvFileInput" id="uploadLabel" class="file-upload-btn">📂 SD-Karten CSV hochladen</label>
-    <input type="file" id="csvFileInput" accept=".csv" onchange="importiereCSV(this)">
-    <button id="downloadBtn" onclick="downloadCSV()" disabled>Daten als CSV speichern</button>
-    
-    <button id="mapToggleBtn" onclick="toggleMapView()" disabled>🗺️ GPS-Route auf Karte anzeigen</button>
-    <br><br>
+    <div class="control-panel">
+        <button id="connectBtn">🔗 Logger verbinden</button>
+        
+        <label for="csvFileInput" id="uploadLabel" class="file-upload-btn">📂 CSV hochladen</label>
+        <input type="file" id="csvFileInput" accept=".csv" onchange="importiereCSV(this)">
+        
+        <button id="mapToggleBtn" onclick="toggleMapView()" disabled>🗺️ Route anzeigen</button>
+        
+        <button id="downloadBtn" onclick="downloadCSV()" disabled>💾 CSV speichern</button>
+    </div>
 
     <div id="mapContainer">
-        <h3 style="margin-top:0; color:#2c3e50; padding-left:10px;">🗺️ GPS-Routenverfolgung</h3>
+        <h3 style="margin-top:0; color:#2c3e50; padding-left:10px;">🗺️ GPS-Routenverfolgung (OpenStreetMap)</h3>
         <div id="map"></div>
     </div>
 </div>
@@ -133,21 +163,16 @@ let gpsPunkte = [];
 let ersterEchterLat = null;
 let ersterEchterLon = null;
 
-/**
- * NEU: Schaltet die Karten-Ansicht um, wenn der User den Button aktiv klickt
- */
 function toggleMapView() {
     const container = document.getElementById('mapContainer');
     const btn = document.getElementById('mapToggleBtn');
     
-    // Falls die Karte unsichtbar ist, blenden wir sie ein und initialisieren sie
     if (container.style.display === "none" || container.style.display === "") {
         container.style.display = "block";
         btn.innerText = "🗺️ Karte ausblenden";
         
-        // Leaflet-Karte initialisieren, falls das noch nicht geschehen ist
         if (!map && ersterEchterLat && ersterEchterLon) {
-            map = L.map('map').setView([ersterEchterLat, ersterEchterLon], 15);
+            map = L.map('map').setView([ersterEchterLat, ersterEchterLon], 16);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; OpenStreetMap'
             }).addTo(map);
@@ -155,18 +180,15 @@ function toggleMapView() {
             mapMarker = L.marker([ersterEchterLat, ersterEchterLon]).addTo(map);
             mapRoute = L.polyline(gpsPunkte, { color: '#2ecc71', weight: 5 }).addTo(map);
             
-            // Wenn historische Routendaten geladen wurden, zoome direkt auf die volle Strecke
             if (gpsPunkte.length > 1) {
                 map.fitBounds(mapRoute.getBounds());
             }
         } else if (map) {
-            // Falls sie schon existierte, rufen wir invalidateSize auf, damit Leaflet sich richtig zeichnet
             map.invalidateSize();
         }
     } else {
-        // Wenn sie sichtbar war, blenden wir sie wieder aus
         container.style.display = "none";
-        btn.innerText = "🗺️ GPS-Route auf Karte anzeigen";
+        btn.innerText = "🗺️ Route anzeigen";
     }
 }
 
@@ -176,7 +198,7 @@ function createChartOnDemand(sensorName) {
     
     let card = document.createElement('div');
     card.id = `container-${sensorName}`;
-    card.style = "background: white; margin: 20px auto; padding: 15px; width: 85%; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); text-align: left;";
+    card.style = "background: white; margin: 20px auto; padding: 15px; width: 100%; box-sizing: border-box; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); text-align: left;";
     card.innerHTML = `<h3 style="margin-top:0; color:#2c3e50; padding-left:10px;">📊 ${info.name} [${info.einheit}]</h3><canvas id="chart-${sensorName}"></canvas>`;
     document.getElementById('container').appendChild(card); 
 
@@ -205,21 +227,16 @@ function verarbeiteZeile(zeile) {
         let aktuelleLat = parseFloat(parts[7]); 
         let aktuelleLon = parseFloat(parts[8]); 
 
-        // Filter: Echte GPS-Daten tracken, aber Karte noch NICHT automatisch anzeigen
         if (aktuelleLat !== 0.0 && aktuelleLon !== 0.0 && !isNaN(aktuelleLat) && !isNaN(aktuelleLon)) {
-            // Speichere die allerersten echten Koordinaten als Anker für die Karte
             if (ersterEchterLat === null) {
                 ersterEchterLat = aktuelleLat;
                 ersterEchterLon = aktuelleLon;
             }
-            
             let neuePosition = [aktuelleLat, aktuelleLon];
             gpsPunkte.push(neuePosition);
             
-            // Schalte den Karten-Button frei, weil gültiges GPS gefunden wurde!
             document.getElementById('mapToggleBtn').disabled = false;
             
-            // Wenn der User die Karte bereits offen hat, updaten wir sie live im Hintergrund
             if (map) {
                 mapMarker.setLatLng(neuePosition);
                 mapRoute.setLatLngs(gpsPunkte);
@@ -227,12 +244,10 @@ function verarbeiteZeile(zeile) {
             }
         }
         
-        // Graphen füttern
         for(let i = 0; i < SENSOR_NAMES.length; i++) {
             let sensorName = SENSOR_NAMES[i];
             let wert = parseFloat(parts[i + 1]); 
             
-            // Nullen bei Lat/Lon unterdrücken für glatte Graphen
             if ((sensorName === "lat" || sensorName === "lon") && wert === 0.0) continue; 
 
             if (wert !== 0.0 && !isNaN(wert)) {
@@ -263,7 +278,7 @@ function setUploadButtonState(disabled) {
 
 function handleDisconnect() {
     const btn = document.getElementById('connectBtn');
-    btn.innerText = "Logger verbinden"; btn.style.background = "#3498db"; btn.disabled = false;
+    btn.innerText = "🔗 Logger verbinden"; btn.style.background = "#3498db"; btn.disabled = false;
     bleDevice = null; bleServer = null;
     setUploadButtonState(false);
 }
@@ -291,7 +306,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
             }
         });
         
-        document.getElementById('connectBtn').innerText = "Verbindung trennen 🔴";
+        document.getElementById('connectBtn').innerText = "❌ Verbindung trennen";
         document.getElementById('connectBtn').style.background = "#e74c3c";
         document.getElementById('downloadBtn').disabled = false;
     } catch (error) { handleDisconnect(); alert("Verbindung fehlgeschlagen."); }
@@ -306,28 +321,25 @@ function importiereCSV(input) {
         const text = e.target.result;
         const zeilen = text.split('\n');
 
-        // Kompletter Reset
         document.getElementById('container').querySelectorAll('[id^="container-"]').forEach(el => el.remove());
         charts = {}; activeSensors.clear();
         csvDatenSpeicher = ["timestamp," + SENSOR_NAMES.join(",")];
         
-        // Karte wegräumen & Button zurücksetzen
         if(map) { map.remove(); map = null; }
         gpsPunkte = []; ersterEchterLat = null; ersterEchterLon = null;
         document.getElementById('mapContainer').style.display = "none";
-        document.getElementById('mapToggleBtn').innerText = "🗺️ GPS-Route auf Karte anzeigen";
+        document.getElementById('mapToggleBtn').innerText = "🗺️ Route anzeigen";
         document.getElementById('mapToggleBtn').disabled = true;
 
-        // Zeilen parsen
         zeilen.forEach(zeile => { verarbeiteZeile(zeile); });
         Object.keys(charts).forEach(key => charts[key].update());
         
         document.getElementById('downloadBtn').disabled = false;
         const connBtn = document.getElementById('connectBtn');
         connBtn.disabled = true; connBtn.style.background = "#bdc3c7";
-        connBtn.innerText = "Kopplung gesperrt (Datei geladen)";
+        connBtn.innerText = "🔒 Kopplung gesperrt";
         
-        alert("Daten geladen! Der GPS-Button ist jetzt freigeschaltet.");
+        alert("Daten geladen! Der GPS-Button ist jetzt einsatzbereit.");
     };
     reader.readAsText(file);
 }
