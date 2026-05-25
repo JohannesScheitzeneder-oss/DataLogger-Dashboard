@@ -358,8 +358,46 @@ function importiereCSV(input) {
         const text = e.target.result;
         const zeilen = text.split('\n');
 
+        // --- VALIDIERUNG START ---
+        if (zeilen.length < 2) {
+            alert("❌ Fehler: Die Datei ist leer oder enthält keine Datenzeilen!");
+            input.value = ""; // Input zurücksetzen
+            return;
+        }
+
+        // 1. Kopfzeile prüfen (Grobe Struktur)
+        let kopfzeile = zeilen[0].trim().toLowerCase();
+        // Wir prüfen, ob wichtige Schlüsselwörter eures Loggers existieren
+        if (!kopfzeile.startsWith("timestamp") || !kopfzeile.includes("accelx") || !kopfzeile.includes("battvoltage")) {
+            alert("❌ Ungültiges Dateiformat!\n\nDie hochgeladene CSV-Datei hat nicht die erforderliche Struktur.\nEs müssen die Sensor-Spalten eures DataLoggers enthalten sein.");
+            input.value = ""; 
+            return;
+        }
+
+        // 2. Stichproben-Check der ersten Datenzeile
+        let ersteDatenzeile = zeilen[1].trim();
+        let testTeile = ersteDatenzeile.split(',');
+        
+        if (testTeile.length < 15) {
+            alert(`❌ Strukturfehler!\n\nErwartet wurden mindestens 15 Datenspalten, die Datei liefert in Zeile 2 aber nur ${testTeile.length} Spalten. Bitte überprüfe das Trennzeichen (Komma).`);
+            input.value = "";
+            return;
+        }
+
+        // 3. Typen-Check (Ist der Zeitstempel ein Datum?)
+        let testDatum = new Date(testTeile[0]);
+        if (isNaN(testDatum.getTime())) {
+            alert("❌ Datenfehler!\n\nDer Zeitstempel in der ersten Datenzeile ist ungültig oder kein echtes Datumsformat.");
+            input.value = "";
+            return;
+        }
+        // --- VALIDIERUNG ENDE (Datei ist sicher!) ---
+
+
+        // Erst JETZT, wo wir wissen, dass die Datei Sinn macht, setzen wir das Dashboard zurück
         document.getElementById('container').querySelectorAll('[id^="container-"]').forEach(el => el.remove());
-        charts = {}; activeSensors.clear();
+        charts = {}; 
+        activeSensors.clear();
         csvDatenSpeicher = ["timestamp," + SENSOR_NAMES.join(",")];
         
         if(map) { map.remove(); map = null; }
@@ -368,19 +406,25 @@ function importiereCSV(input) {
         document.getElementById('mapToggleBtn').innerText = "🗺️ Route anzeigen";
         document.getElementById('mapToggleBtn').disabled = true;
 
-        zeilen.forEach(zeile => { verarbeiteZeile(zeile); });
+        // Zeilen wie gewohnt verarbeiten
+        let verarbeiteteZeilenZaehler = 0;
+        zeilen.forEach(zeile => { 
+            // verarbeiteZeile gibt true zurück, wenn sie erfolgreich war
+            verarbeiteZeile(zeile); 
+        });
+        
         Object.keys(charts).forEach(key => charts[key].update());
         
         document.getElementById('downloadBtn').disabled = false;
         const connBtn = document.getElementById('connectBtn');
-        connBtn.disabled = true; connBtn.style.background = "#bdc3c7";
+        connBtn.disabled = true; 
+        connBtn.style.background = "#bdc3c7";
         connBtn.innerText = "🔒 Kopplung gesperrt";
         
-        alert("Daten geladen! Graphen sind jetzt zoombar.");
+        alert("🎉 Daten erfolgreich geladen und überprüft!");
     };
     reader.readAsText(file);
 }
-
 function downloadCSV() {
     if(csvDatenSpeicher.length <= 1) return;
     let csvContent = "data:text/csv;charset=utf-8," + csvDatenSpeicher.join("\n");
