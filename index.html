@@ -26,6 +26,7 @@
             color: #2c3e50;
             margin-bottom: 25px;
         }
+        /* Einheitliches Button-Design */
         button, .file-upload-btn {
             padding: 12px 24px;
             font-size: 16px;
@@ -39,8 +40,14 @@
         }
         #connectBtn { background-color: #3498db; color: white; }
         #connectBtn:hover:not(:disabled) { background-color: #2980b9; }
+        
         #downloadBtn { background-color: #e67e22; color: white; margin-left: 10px; }
         #downloadBtn:hover:not(:disabled) { background-color: #d35400; }
+        
+        /* Neuer lila Button für die GPS-Karte */
+        #mapToggleBtn { background-color: #9b59b6; color: white; margin-left: 10px; }
+        #mapToggleBtn:hover:not(:disabled) { background-color: #8e44ad; }
+
         button:disabled, .file-upload-btn.disabled {
             background-color: #bdc3c7 !important;
             cursor: not-allowed !important;
@@ -50,9 +57,9 @@
         .file-upload-btn:hover:not(.disabled) { background-color: #27ae60; }
         #csvFileInput { display: none; }
 
-        /* Styling für die Landkarte */
+        /* Karten-Container-Styling */
         #mapContainer {
-            display: none; /* Wird erst eingeblendet, wenn GPS-Daten da sind */
+            display: none; /* Karte bleibt strikt unsichtbar, bis der Button geklickt wird */
             background: white;
             margin: 20px auto;
             padding: 15px;
@@ -63,7 +70,7 @@
         }
         #map {
             width: 100%;
-            height: 400px;
+            height: 450px;
             border-radius: 6px;
             margin-top: 10px;
         }
@@ -78,10 +85,12 @@
     <label for="csvFileInput" id="uploadLabel" class="file-upload-btn">📂 SD-Karten CSV hochladen</label>
     <input type="file" id="csvFileInput" accept=".csv" onchange="importiereCSV(this)">
     <button id="downloadBtn" onclick="downloadCSV()" disabled>Daten als CSV speichern</button>
+    
+    <button id="mapToggleBtn" onclick="toggleMapView()" disabled>🗺️ GPS-Route auf Karte anzeigen</button>
     <br><br>
 
     <div id="mapContainer">
-        <h3 style="margin-top:0; color:#2c3e50; padding-left:10px;">🗺️ GPS-Routenverfolgung (Live)</h3>
+        <h3 style="margin-top:0; color:#2c3e50; padding-left:10px;">🗺️ GPS-Routenverfolgung</h3>
         <div id="map"></div>
     </div>
 </div>
@@ -116,29 +125,49 @@ let csvDatenSpeicher = ["timestamp," + SENSOR_NAMES.join(",")];
 let bleDevice = null;
 let bleServer = null;
 
-// NEU: Variablen für die Landkarte
+// Karten-Variablen
 let map = null;
 let mapMarker = null;
 let mapRoute = null;
-let gpsPunkte = []; // Speichert alle [lat, lon] Pärchen für die Linie
+let gpsPunkte = []; 
+let ersterEchterLat = null;
+let ersterEchterLon = null;
 
-// Initialisiert die Leaflet-Karte
-function initMap(startLat, startLon) {
-    document.getElementById('mapContainer').style.display = "block"; // Karte sichtbar machen
+/**
+ * NEU: Schaltet die Karten-Ansicht um, wenn der User den Button aktiv klickt
+ */
+function toggleMapView() {
+    const container = document.getElementById('mapContainer');
+    const btn = document.getElementById('mapToggleBtn');
     
-    // Karte erstellen und auf Startkoordinaten zentrieren
-    map = L.map('map').setView([startLat, startLon], 16);
+    // Falls die Karte unsichtbar ist, blenden wir sie ein und initialisieren sie
+    if (container.style.display === "none" || container.style.display === "") {
+        container.style.display = "block";
+        btn.innerText = "🗺️ Karte ausblenden";
+        
+        // Leaflet-Karte initialisieren, falls das noch nicht geschehen ist
+        if (!map && ersterEchterLat && ersterEchterLon) {
+            map = L.map('map').setView([ersterEchterLat, ersterEchterLon], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(map);
 
-    // OpenStreetMap-Kartenkacheln (Tiles) kostenlos laden
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap-Mitwirkende'
-    }).addTo(map);
-
-    // Rote Nadel (Marker) am Startpunkt setzen
-    mapMarker = L.marker([startLat, startLon]).addTo(map);
-
-    // Blaue Linie für die Route vorbereiten
-    mapRoute = L.polyline([], { color: '#3498db', weight: 4 }).addTo(map);
+            mapMarker = L.marker([ersterEchterLat, ersterEchterLon]).addTo(map);
+            mapRoute = L.polyline(gpsPunkte, { color: '#2ecc71', weight: 5 }).addTo(map);
+            
+            // Wenn historische Routendaten geladen wurden, zoome direkt auf die volle Strecke
+            if (gpsPunkte.length > 1) {
+                map.fitBounds(mapRoute.getBounds());
+            }
+        } else if (map) {
+            // Falls sie schon existierte, rufen wir invalidateSize auf, damit Leaflet sich richtig zeichnet
+            map.invalidateSize();
+        }
+    } else {
+        // Wenn sie sichtbar war, blenden wir sie wieder aus
+        container.style.display = "none";
+        btn.innerText = "🗺️ GPS-Route auf Karte anzeigen";
+    }
 }
 
 function createChartOnDemand(sensorName) {
@@ -173,36 +202,38 @@ function verarbeiteZeile(zeile) {
     
     if(parts.length >= 15) { 
         let timestamp = parts[0]; 
-        let aktuelleLat = parseFloat(parts[7]); // Index 7 ist lat
-        let aktuelleLon = parseFloat(parts[8]); // Index 8 ist lon
+        let aktuelleLat = parseFloat(parts[7]); 
+        let aktuelleLon = parseFloat(parts[8]); 
 
-        // KORREKTUR: Wir prüfen, ob es SIND echte Koordinaten (nicht 0.0 und nicht NaN)
+        // Filter: Echte GPS-Daten tracken, aber Karte noch NICHT automatisch anzeigen
         if (aktuelleLat !== 0.0 && aktuelleLon !== 0.0 && !isNaN(aktuelleLat) && !isNaN(aktuelleLon)) {
-            // Falls die Karte noch gar nicht existiert, erstellen wir sie JETZT mit den ersten echten Daten!
-            if (!map) {
-                initMap(aktuelleLat, aktuelleLon); 
+            // Speichere die allerersten echten Koordinaten als Anker für die Karte
+            if (ersterEchterLat === null) {
+                ersterEchterLat = aktuelleLat;
+                ersterEchterLon = aktuelleLon;
             }
+            
             let neuePosition = [aktuelleLat, aktuelleLon];
             gpsPunkte.push(neuePosition);
             
-            mapMarker.setLatLng(neuePosition); // Nadel an aktuelle Position setzen
-            mapRoute.setLatLngs(gpsPunkte);   // Route zeichnen
+            // Schalte den Karten-Button frei, weil gültiges GPS gefunden wurde!
+            document.getElementById('mapToggleBtn').disabled = false;
             
-            if (bleDevice) {
-                map.setView(neuePosition);
+            // Wenn der User die Karte bereits offen hat, updaten wir sie live im Hintergrund
+            if (map) {
+                mapMarker.setLatLng(neuePosition);
+                mapRoute.setLatLngs(gpsPunkte);
+                if (bleDevice) map.setView(neuePosition);
             }
         }
         
-        // Graphen befüllen (wie gehabt)
+        // Graphen füttern
         for(let i = 0; i < SENSOR_NAMES.length; i++) {
             let sensorName = SENSOR_NAMES[i];
             let wert = parseFloat(parts[i + 1]); 
             
-            // Auch bei den Graphen filtern wir die 0.0-Werte für Lat/Lon heraus,
-            // damit der Graph nicht hässlich von 0 auf 47 hochspringt!
-            if ((sensorName === "lat" || sensorName === "lon") && wert === 0.0) {
-                continue; 
-            }
+            // Nullen bei Lat/Lon unterdrücken für glatte Graphen
+            if ((sensorName === "lat" || sensorName === "lon") && wert === 0.0) continue; 
 
             if (wert !== 0.0 && !isNaN(wert)) {
                 if (!activeSensors.has(sensorName)) {
@@ -232,19 +263,13 @@ function setUploadButtonState(disabled) {
 
 function handleDisconnect() {
     const btn = document.getElementById('connectBtn');
-    btn.innerText = "Logger verbinden";
-    btn.style.background = "#3498db";
-    btn.disabled = false;
-    bleDevice = null;
-    bleServer = null;
+    btn.innerText = "Logger verbinden"; btn.style.background = "#3498db"; btn.disabled = false;
+    bleDevice = null; bleServer = null;
     setUploadButtonState(false);
 }
 
 document.getElementById('connectBtn').addEventListener('click', async () => {
-    if (bleDevice && bleDevice.gatt.connected) {
-        bleDevice.gatt.disconnect();
-        return;
-    }
+    if (bleDevice && bleDevice.gatt.connected) { bleDevice.gatt.disconnect(); return; }
     try {
         bleDevice = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e'] });
         bleDevice.addEventListener('gattserverdisconnected', handleDisconnect);
@@ -261,8 +286,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
             let decoder = new TextDecoder('utf-8');
             datenPuffer += decoder.decode(event.target.value);
             if (datenPuffer.includes('\n')) {
-                let zeilen = datenPuffer.split('\n');
-                datenPuffer = zeilen.pop(); 
+                let zeilen = datenPuffer.split('\n'); datenPuffer = zeilen.pop(); 
                 zeilen.forEach(zeile => { verarbeiteZeile(zeile); });
             }
         });
@@ -270,10 +294,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         document.getElementById('connectBtn').innerText = "Verbindung trennen 🔴";
         document.getElementById('connectBtn').style.background = "#e74c3c";
         document.getElementById('downloadBtn').disabled = false;
-    } catch (error) {
-        handleDisconnect();
-        alert("Verbindung fehlgeschlagen.");
-    }
+    } catch (error) { handleDisconnect(); alert("Verbindung fehlgeschlagen."); }
 });
 
 function importiereCSV(input) {
@@ -285,28 +306,28 @@ function importiereCSV(input) {
         const text = e.target.result;
         const zeilen = text.split('\n');
 
-        // Dashboard & Karte komplett zurücksetzen
+        // Kompletter Reset
         document.getElementById('container').querySelectorAll('[id^="container-"]').forEach(el => el.remove());
-        charts = {};
-        activeSensors.clear();
+        charts = {}; activeSensors.clear();
         csvDatenSpeicher = ["timestamp," + SENSOR_NAMES.join(",")];
-        if(map) { map.remove(); map = null; gpsPunkte = []; } // Alte Karte löschen
+        
+        // Karte wegräumen & Button zurücksetzen
+        if(map) { map.remove(); map = null; }
+        gpsPunkte = []; ersterEchterLat = null; ersterEchterLon = null;
+        document.getElementById('mapContainer').style.display = "none";
+        document.getElementById('mapToggleBtn').innerText = "🗺️ GPS-Route auf Karte anzeigen";
+        document.getElementById('mapToggleBtn').disabled = true;
 
+        // Zeilen parsen
         zeilen.forEach(zeile => { verarbeiteZeile(zeile); });
         Object.keys(charts).forEach(key => charts[key].update());
         
-        // Wenn am Ende des Imports Punkte auf der Karte sind, zoome so, dass man die GANZE Route sieht!
-        if (map && gpsPunkte.length > 0) {
-            map.fitBounds(mapRoute.getBounds());
-        }
-
         document.getElementById('downloadBtn').disabled = false;
         const connBtn = document.getElementById('connectBtn');
-        connBtn.disabled = true;
-        connBtn.style.background = "#bdc3c7";
+        connBtn.disabled = true; connBtn.style.background = "#bdc3c7";
         connBtn.innerText = "Kopplung gesperrt (Datei geladen)";
         
-        alert("Daten geladen! Scroll nach unten, um die Route auf der Karte zu sehen.");
+        alert("Daten geladen! Der GPS-Button ist jetzt freigeschaltet.");
     };
     reader.readAsText(file);
 }
@@ -318,9 +339,7 @@ function downloadCSV() {
     let link = document.createElement("a");
     link.setAttribute("href", encodedUri);
     link.setAttribute("download", "datalogger_export.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
 </script>
 </body>
