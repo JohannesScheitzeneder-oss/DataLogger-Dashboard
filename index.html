@@ -173,31 +173,37 @@ function verarbeiteZeile(zeile) {
     
     if(parts.length >= 15) { 
         let timestamp = parts[0]; 
-        let aktuelleLat = parseFloat(parts[7]); // Index 7 in eurer CSV ist lat
-        let aktuelleLon = parseFloat(parts[8]); // Index 8 in eurer CSV ist lon
+        let aktuelleLat = parseFloat(parts[7]); // Index 7 ist lat
+        let aktuelleLon = parseFloat(parts[8]); // Index 8 ist lon
 
-        // NEU: Wenn gültige GPS-Daten reinkommen, Karte updaten
+        // KORREKTUR: Wir prüfen, ob es SIND echte Koordinaten (nicht 0.0 und nicht NaN)
         if (aktuelleLat !== 0.0 && aktuelleLon !== 0.0 && !isNaN(aktuelleLat) && !isNaN(aktuelleLon)) {
+            // Falls die Karte noch gar nicht existiert, erstellen wir sie JETZT mit den ersten echten Daten!
             if (!map) {
-                initMap(aktuelleLat, aktuelleLon); // Karte beim ersten GPS-Punkt starten
+                initMap(aktuelleLat, aktuelleLon); 
             }
             let neuePosition = [aktuelleLat, aktuelleLon];
             gpsPunkte.push(neuePosition);
             
-            mapMarker.setLatLng(neuePosition); // Nadel bewegen
-            mapRoute.setLatLngs(gpsPunkte);   // Linie verlängern
+            mapMarker.setLatLng(neuePosition); // Nadel an aktuelle Position setzen
+            mapRoute.setLatLngs(gpsPunkte);   // Route zeichnen
             
-            // Wenn es Live-Bluetooth ist, die Karte immer mitzentrieren
             if (bleDevice) {
                 map.setView(neuePosition);
             }
         }
         
-        // Graphen wie gewohnt befüllen
+        // Graphen befüllen (wie gehabt)
         for(let i = 0; i < SENSOR_NAMES.length; i++) {
             let sensorName = SENSOR_NAMES[i];
             let wert = parseFloat(parts[i + 1]); 
             
+            // Auch bei den Graphen filtern wir die 0.0-Werte für Lat/Lon heraus,
+            // damit der Graph nicht hässlich von 0 auf 47 hochspringt!
+            if ((sensorName === "lat" || sensorName === "lon") && wert === 0.0) {
+                continue; 
+            }
+
             if (wert !== 0.0 && !isNaN(wert)) {
                 if (!activeSensors.has(sensorName)) {
                     activeSensors.add(sensorName);
