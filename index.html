@@ -393,9 +393,10 @@ function importiereCSV(input) {
             return;
         }
 
-        // 3. Typen-Check (Ist der Zeitstempel ein Datum?)
-        let testDatum = new Date(testTeile[0]);
-        if (isNaN(testDatum.getTime())) {
+        // 3. Typen-Check (Nutzt jetzt die Reparatur-Funktion)
+        let bereinigterTestZeitstempel = formatiereZeitstempel(testTeile[0]);
+        // Wenn selbst nach der Reparatur kein gültiges Datum rauskommt, ist es wirklich Quatsch
+        if (bereinigterTestZeitstempel === testTeile[0] && isNaN(new Date(testTeile[0]).getTime())) {
             alert("❌ Datenfehler!\n\nDer Zeitstempel in der ersten Datenzeile ist ungültig oder kein echtes Datumsformat.");
             input.value = "";
             return;
