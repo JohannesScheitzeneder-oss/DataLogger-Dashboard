@@ -162,17 +162,26 @@ let ersterEchterLon = null;
  */
 function formatiereZeitstempel(rawTimestamp) {
     try {
+        // REPARATUR-LOGIK: Falls der Arduino z.B. "10:0:3" statt "10:00:03" gesendet hat
+        if (rawTimestamp.includes('T') && rawTimestamp.includes('Z')) {
+            let [datum, zeit] = rawTimestamp.replace('Z', '').split('T');
+            let zeitTeile = zeit.split(':');
+            
+            // Wenn Stunden, Minuten oder Sekunden einstellig sind, eine Null voranstellen
+            if (zeitTeile.length === 3) {
+                let hh = zeitTeile[0].padStart(2, '0');
+                let mm = zeitTeile[1].padStart(2, '0');
+                let ss = zeitTeile[2].padStart(2, '0');
+                rawTimestamp = `${datum}T${hh}:${mm}:${ss}Z`; // Neu zusammenbauen
+            }
+        }
+
         const date = new Date(rawTimestamp);
-        if (isNaN(date.getTime())) return rawTimestamp; // Fallback, falls Format fehlerhaft
+        if (isNaN(date.getTime())) return rawTimestamp; 
         
-        // Formatiert zu: DD.MM.YYYY, HH:MM:SS (in der lokalen Zeitzone des PCs/Handys)
         return date.toLocaleString('de-DE', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
         });
     } catch(e) {
         return rawTimestamp;
