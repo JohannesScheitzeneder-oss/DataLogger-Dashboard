@@ -66,49 +66,46 @@
 </div>
 
 <script>
-// Definition der Datenstruktur anhand deiner 1. CSV-Zeile
 const SENSOR_NAMES = [
     "accelX", "accelY", "accelZ", "temp", "hum", "press", 
     "lat", "lon", "alt", "speed", "sats", "thermocouple", "soundLevel", "battVoltage"
 ];
 
-let charts = {};               // Speicher für alle dynamisch erstellten Diagramme
-let activeSensors = new Set(); // Liste der aktuell aktiven Sensoren (Wert ungleich 0)
-let csvDatenSpeicher = [];     // Array, das alle reingekommenen Zeilen für den Download speichert
+let charts = {};               
+let activeSensors = new Set(); 
+let csvDatenSpeicher = [];     
 
-// Füge den Header als erste Zeile in den Speicher ein
+// Globale Variablen für die Bluetooth-Verbindung
+let bleDevice = null;
+let bleServer = null;
+
 csvDatenSpeicher.push("timestamp," + SENSOR_NAMES.join(","));
 
-// FUNKTION: Erstellt ein neues Diagramm auf der Webseite, sobald ein Sensor aktiv wird
 function createChartOnDemand(sensorName) {
-    if (document.getElementById(`container-${sensorName}`)) return; // Falls es schon existiert
+    if (document.getElementById(`container-${sensorName}`)) return; 
 
-    // 1. HTML-Kasten (Card) für das Diagramm erzeugen
     let card = document.createElement('div');
     card.id = `container-${sensorName}`;
     card.style = "background: white; margin: 20px auto; padding: 15px; width: 85%; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); font-family: Arial, sans-serif;";
     card.innerHTML = `<h3 style="margin-top:0; color:#333; text-align:left; padding-left:10px;">📈 Sensor: ${sensorName}</h3><canvas id="chart-${sensorName}"></canvas>`;
-    document.getElementById('container').appendChild(card); // An das Hauptfenster anhängen
+    document.getElementById('container').appendChild(card); 
 
-    // 2. Chart.js für diesen spezifischen Sensor initialisieren
     let ctx = document.getElementById(`chart-${sensorName}`).getContext('2d');
-    
-    // Zufällige Farbe für die Linie generieren, damit sich die Graphen unterscheiden
     let farbe = '#' + Math.floor(Math.random()*16777215).toString(16);
 
     charts[sensorName] = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: [], // X-Achse (Zeitstempel)
+            labels: [], 
             datasets: [{
                 label: sensorName,
-                data: [], // Y-Achse (Messwerte)
+                data: [], 
                 borderColor: farbe,
-                backgroundColor: farbe + "1A", // Transparente Füllung unter der Linie
+                backgroundColor: farbe + "1A", 
                 borderWidth: 2,
                 fill: true,
-                pointRadius: 1,      // Kleine Punkte für bessere Performance
-                tension: 0.1         // Leicht geschmeidige Kurve
+                pointRadius: 1,      
+                tension: 0.1         
             }]
         },
         options: {
@@ -116,7 +113,7 @@ function createChartOnDemand(sensorName) {
             scales: {
                 x: { 
                     title: { display: true, text: 'Zeitstempel (UTC)' },
-                    ticks: { maxTicksLimit: 5 } // Verhindert, dass die X-Achse mit Text überlädt
+                    ticks: { maxTicksLimit: 5 } 
                 },
                 y: { 
                     title: { display: true, text: 'Messwert' },
@@ -127,74 +124,90 @@ function createChartOnDemand(sensorName) {
     });
 }
 
-// BLUETOOTH-VERBINDUNG STARTEN
+// Zentrale Funktion: Setzt das UI sauber zurück, behält aber die Daten!
+function handleDisconnect() {
+    console.log("Bluetooth-Verbindung wurde getrennt.");
+    
+    // Button zurücksetzen
+    const btn = document.getElementById('connectBtn');
+    btn.innerText = "Logger verbinden";
+    btn.style.background = "#3498db";
+    
+    // Objekte leeren
+    bleDevice = null;
+    bleServer = null;
+    
+    // Hinweis: csvDatenSpeicher und charts werden NICHT gelöscht! 
+    // Der Download-Button bleibt aktiv, sofern Daten da sind.
+}
+
+// HIER GEÄNDERT: Klick-Event steuert jetzt Verbinden UND Trennen
 document.getElementById('connectBtn').addEventListener('click', async () => {
+    
+    // FALL A: Wir SIND verbunden -> Bei Klick jetzt aktiv VERBINDUNG TRENNEN
+    if (bleDevice && bleDevice.gatt.connected) {
+        console.log("Trenne Verbindung manuell über Website...");
+        bleDevice.gatt.disconnect();
+        // Das Event 'gattserverdisconnected' fängt das ab und ruft handleDisconnect() auf
+        return;
+    }
+
+    // FALL B: Wir sind NICHT verbunden -> Normalen Verbindungsaufbau starten
     try {
-        // WICHTIG: UUIDs müssen für den Browser in KLEINBUCHSTABEN geschrieben sein!
-        const device = await navigator.bluetooth.requestDevice({
+        bleDevice = await navigator.bluetooth.requestDevice({
             acceptAllDevices: true,
-            optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
+            optionalServices: ['e400001-b5a3-f393-e0a9-e50e24dcca9e', '6e400001-b5a3-f393-e0a9-e50e24dcca9e']
         });
         
-        // Status auf dem Button anzeigen
+        // Event registrieren: Falls der Arduino die Verbindung trennt (z.B. über sein Menü)
+        bleDevice.addEventListener('gattserverdisconnected', handleDisconnect);
+        
         document.getElementById('connectBtn').innerText = "Verbinde...";
         
-        const server = await device.gatt.connect();
-        const service = await server.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
+        bleServer = await bleDevice.gatt.connect();
+        const service = await bleServer.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
         const characteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
         
         await characteristic.startNotifications();
-        let datenPuffer = ""; // Puffer für zerstückelte Bluetooth-Pakete
+        let datenPuffer = ""; 
 
-        // Event-Listener: Wird jedes Mal ausgeführt, wenn der Arduino Daten schickt
         characteristic.addEventListener('characteristicvaluechanged', (event) => {
             let decoder = new TextDecoder('utf-8');
             datenPuffer += decoder.decode(event.target.value);
             
-            // Wenn eine komplette Zeile im Puffer ist (\n)
             if (datenPuffer.includes('\n')) {
                 let zeilen = datenPuffer.split('\n');
-                datenPuffer = zeilen.pop(); // Unvollständigen Rest zurück in den Puffer legen
+                datenPuffer = zeilen.pop(); 
                 
                 zeilen.forEach(zeile => {
                     let bereinigteZeile = zeile.trim();
                     if (bereinigteZeile.length === 0) return;
 
-                    // Für den späteren CSV-Download zwischenspeichern
                     csvDatenSpeicher.push(bereinigteZeile);
-
-                    // Zeile anhand des Kommas aufteilen
                     let parts = bereinigteZeile.split(',');
                     
-                    // Sicherheitscheck: Es müssen mindestens der Zeitstempel + alle 14 Sensorwerte da sein
                     if(parts.length >= 15) { 
-                        let timestamp = parts[0]; // Erste Spalte ist immer die Zeit
+                        let timestamp = parts[0]; 
                         
-                        // Schleife durch alle 14 Sensorkanäle
                         for(let i = 0; i < SENSOR_NAMES.length; i++) {
                             let sensorName = SENSOR_NAMES[i];
-                            let wert = parseFloat(parts[i + 1]); // i+1, weil Index 0 der Timestamp ist
+                            let wert = parseFloat(parts[i + 1]); 
                             
-                            // INTELLIGENTER FILTER: Wenn der Wert nicht 0 (oder 0.0) ist, ist der Sensor aktiv!
                             if (wert !== 0.0 && !isNaN(wert)) {
                                 if (!activeSensors.has(sensorName)) {
                                     activeSensors.add(sensorName);
-                                    createChartOnDemand(sensorName); // Erstelle das Diagramm erst jetzt live!
+                                    createChartOnDemand(sensorName); 
                                 }
                             }
                             
-                            // Wenn für diesen Sensor ein Diagramm existiert, Daten einspeisen
                             if (charts[sensorName]) {
                                 charts[sensorName].data.labels.push(timestamp);
                                 charts[sensorName].data.datasets[0].data.push(wert);
                                 
-                                // Begrenzung: Nur die letzten 50 Messwerte anzeigen, um den Browser nicht zu verlangsamen
                                 if (charts[sensorName].data.labels.length > 50) {
                                     charts[sensorName].data.labels.shift();
                                     charts[sensorName].data.datasets[0].data.shift();
                                 }
-                                
-                                // Diagramm ohne ruckelnde Animationen updaten
                                 charts[sensorName].update('none');
                             }
                         }
@@ -203,23 +216,21 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
             }
         });
         
-        // Optisches Feedback bei erfolgreicher Verbindung
-        document.getElementById('connectBtn').innerText = "Verbunden! 🟢";
-        document.getElementById('connectBtn').style.background = "#2ecc71";
+        // Design anpassen, wenn verbunden
+        document.getElementById('connectBtn').innerText = "Verbindung trennen 🔴";
+        document.getElementById('connectBtn').style.background = "#e74c3c";
         
-        // Aktivierung des Download-Buttons
         if(document.getElementById('downloadBtn')) {
             document.getElementById('downloadBtn').disabled = false;
         }
 
     } catch (error) {
         console.log("BLE Fehler: " + error);
-        document.getElementById('connectBtn').innerText = "Logger verbinden";
-        alert("Verbindung fehlgeschlagen. Bitte Bluetooth am Gerät und PC/Handy prüfen!");
+        handleDisconnect();
+        alert("Verbindung fehlgeschlagen oder abgebrochen.");
     }
 });
 
-// Funktion für den CSV-Download
 function downloadCSV() {
     if(csvDatenSpeicher.length <= 1) {
         alert("Noch keine Daten zum Herunterladen empfangen!");
