@@ -224,17 +224,20 @@ function verarbeiteZeile(zeile) {
     
     if(parts.length >= 15) { 
         let timestamp = parts[0]; 
-        let aktuelleLat = parseFloat(parts[7]); 
-        let aktuelleLon = parseFloat(parts[8]); 
+        let aktuelleLat = parseFloat(parts[7]); // Index 7 in eurer CSV ist lat
+        let aktuelleLon = parseFloat(parts[8]); // Index 8 in eurer CSV ist lon
 
+        // 1. KARTEN-LOGIK: Hier filtern wir die 0.0 strikt heraus!
         if (aktuelleLat !== 0.0 && aktuelleLon !== 0.0 && !isNaN(aktuelleLat) && !isNaN(aktuelleLon)) {
             if (ersterEchterLat === null) {
                 ersterEchterLat = aktuelleLat;
                 ersterEchterLon = aktuelleLon;
             }
+            
             let neuePosition = [aktuelleLat, aktuelleLon];
             gpsPunkte.push(neuePosition);
             
+            // Button für die Karte freischalten
             document.getElementById('mapToggleBtn').disabled = false;
             
             if (map) {
@@ -244,13 +247,14 @@ function verarbeiteZeile(zeile) {
             }
         }
         
+        // 2. GRAPHEN-LOGIK: Hier bleibt ALLES drin (auch die 0.0)
         for(let i = 0; i < SENSOR_NAMES.length; i++) {
             let sensorName = SENSOR_NAMES[i];
             let wert = parseFloat(parts[i + 1]); 
-            
-            if ((sensorName === "lat" || sensorName === "lon") && wert === 0.0) continue; 
 
-            if (wert !== 0.0 && !isNaN(wert)) {
+            // Wichtig: Wir überspringen im Graphen nichts mehr! 
+            // Ein Absturz auf 0.0 wird jetzt exakt so gezeichnet, wie er in der CSV steht.
+            if (!isNaN(wert)) {
                 if (!activeSensors.has(sensorName)) {
                     activeSensors.add(sensorName);
                     createChartOnDemand(sensorName); 
@@ -259,6 +263,7 @@ function verarbeiteZeile(zeile) {
             if (charts[sensorName]) {
                 charts[sensorName].data.labels.push(timestamp);
                 charts[sensorName].data.datasets[0].data.push(wert);
+                
                 if (bleDevice && charts[sensorName].data.labels.length > 50) {
                     charts[sensorName].data.labels.shift();
                     charts[sensorName].data.datasets[0].data.shift();
@@ -268,7 +273,6 @@ function verarbeiteZeile(zeile) {
         }
     }
 }
-
 function setUploadButtonState(disabled) {
     const fileInput = document.getElementById('csvFileInput');
     const label = document.getElementById('uploadLabel');
