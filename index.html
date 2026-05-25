@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🛰️ DataLogger Live-Dashboard</title>
+    <title>🛰️ DataLogger Live-Dashboard & Map</title>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <style>
         body {
@@ -24,7 +26,6 @@
             color: #2c3e50;
             margin-bottom: 25px;
         }
-        /* Einheitliches Design für alle Steuerungs-Buttons */
         button, .file-upload-btn {
             padding: 12px 24px;
             font-size: 16px;
@@ -36,37 +37,35 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             display: inline-block;
         }
-        #connectBtn {
-            background-color: #3498db;
-            color: white;
-        }
-        #connectBtn:hover:not(:disabled) {
-            background-color: #2980b9;
-        }
-        #downloadBtn {
-            background-color: #e67e22;
-            color: white;
-            margin-left: 10px;
-        }
-        #downloadBtn:hover:not(:disabled) {
-            background-color: #d35400;
-        }
-        /* Buttons im deaktivierten Zustand grau färben */
+        #connectBtn { background-color: #3498db; color: white; }
+        #connectBtn:hover:not(:disabled) { background-color: #2980b9; }
+        #downloadBtn { background-color: #e67e22; color: white; margin-left: 10px; }
+        #downloadBtn:hover:not(:disabled) { background-color: #d35400; }
         button:disabled, .file-upload-btn.disabled {
             background-color: #bdc3c7 !important;
             cursor: not-allowed !important;
             box-shadow: none !important;
         }
-        .file-upload-btn {
-            background-color: #2ecc71;
-            color: white;
-            margin-left: 10px;
+        .file-upload-btn { background-color: #2ecc71; color: white; margin-left: 10px; }
+        .file-upload-btn:hover:not(.disabled) { background-color: #27ae60; }
+        #csvFileInput { display: none; }
+
+        /* Styling für die Landkarte */
+        #mapContainer {
+            display: none; /* Wird erst eingeblendet, wenn GPS-Daten da sind */
+            background: white;
+            margin: 20px auto;
+            padding: 15px;
+            width: 85%;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            text-align: left;
         }
-        .file-upload-btn:hover:not(.disabled) {
-            background-color: #27ae60;
-        }
-        #csvFileInput {
-            display: none; /* Versteckt das hässliche Standard-Auswahlfeld vom Browser */
+        #map {
+            width: 100%;
+            height: 400px;
+            border-radius: 6px;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -76,304 +75,245 @@
     <h1>🛰️ DataLogger Live-Dashboard</h1>
     
     <button id="connectBtn">Logger verbinden</button>
-    
     <label for="csvFileInput" id="uploadLabel" class="file-upload-btn">📂 SD-Karten CSV hochladen</label>
     <input type="file" id="csvFileInput" accept=".csv" onchange="importiereCSV(this)">
-    
     <button id="downloadBtn" onclick="downloadCSV()" disabled>Daten als CSV speichern</button>
     <br><br>
+
+    <div id="mapContainer">
+        <h3 style="margin-top:0; color:#2c3e50; padding-left:10px;">🗺️ GPS-Routenverfolgung (Live)</h3>
+        <div id="map"></div>
+    </div>
 </div>
 
 <script>
-// Exakte Definition der Sensor-Reihenfolge im CSV-Datenstrom (wichtig für das korrekte Splitten)
 const SENSOR_NAMES = [
     "accelX", "accelY", "accelZ", "temp", "hum", "press", 
     "lat", "lon", "alt", "speed", "sats", "thermocouple", "soundLevel", "battVoltage"
 ];
 
-// CRITICAL UPDATE: Übersetzung der CSV-Kürzel in saubere, deutsche Anzeigenamen mit Einheiten
 const SENSOR_DETAILS = {
-    "accelX":        { name: "Beschleunigung X-Achse", einheit: "g" },
-    "accelY":        { name: "Beschleunigung Y-Achse", einheit: "g" },
-    "accelZ":        { name: "Beschleunigung Z-Achse", einheit: "g" },
-    "temp":          { name: "Temperatur",             einheit: "°C" },
-    "hum":           { name: "Luftfeuchtigkeit",       einheit: "% r.F." },
-    "press":         { name: "Luftdruck",              einheit: "bar" },
-    "lat":           { name: "Geografische Breite (Lat)", einheit: "°" },
-    "lon":           { name: "Geografische Länge (Lon)",  einheit: "°" },
-    "alt":           { name: "Höhe über Meeresspiegel", einheit: "m" },
-    "speed":         { name: "Geschwindigkeit",        einheit: "km/h" },
-    "sats":          { name: "Verbundene Satelliten",  einheit: "Anzahl" },
-    "thermocouple":  { name: "Externe Temperatur (Thermoelement)", einheit: "°C" },
-    "soundLevel":    { name: "Schallpegel / Lautstärke", einheit: "dB" },
-    "battVoltage":   { name: "Batteriespannung",       einheit: "V" }
+    "accelX": { name: "Beschleunigung X-Achse", einheit: "g" },
+    "accelY": { name: "Beschleunigung Y-Achse", einheit: "g" },
+    "accelZ": { name: "Beschleunigung Z-Achse", einheit: "g" },
+    "temp":   { name: "Temperatur",             einheit: "°C" },
+    "hum":    { name: "Luftfeuchtigkeit",       einheit: "% r.F." },
+    "press":  { name: "Luftdruck",              einheit: "bar" },
+    "lat":    { name: "Geografische Breite",    einheit: "°" },
+    "lon":    { name: "Geografische Länge",     einheit: "°" },
+    "alt":    { name: "Höhe über Meer",         einheit: "m" },
+    "speed":  { name: "Geschwindigkeit",        einheit: "km/h" },
+    "sats":   { name: "Satelliten",             einheit: "Anzahl" },
+    "thermocouple": { name: "Externe Temp",     einheit: "°C" },
+    "soundLevel":   { name: "Schallpegel",      einheit: "dB" },
+    "battVoltage":  { name: "Batteriespannung",  einheit: "V" }
 };
 
-let charts = {};               // Speichert die Chart.js Instanzen (Key: Sensorname)
-let activeSensors = new Set(); // Verhindert, dass Diagramme doppelt erstellt werden
-let csvDatenSpeicher = [];     // Array, das alle CSV-Zeilen für den späteren Download speichert
+let charts = {};               
+let activeSensors = new Set(); 
+let csvDatenSpeicher = ["timestamp," + SENSOR_NAMES.join(",")];     
 
 let bleDevice = null;
 let bleServer = null;
 
-// CSV-Headerzeile direkt beim Start in den Speicher schreiben
-csvDatenSpeicher.push("timestamp," + SENSOR_NAMES.join(","));
+// NEU: Variablen für die Landkarte
+let map = null;
+let mapMarker = null;
+let mapRoute = null;
+let gpsPunkte = []; // Speichert alle [lat, lon] Pärchen für die Linie
 
-/**
- * Erstellt dynamisch eine neue HTML-Card inklusive Canvas-Element 
- * und initialisiert das dazugehörige Chart.js-Liniendiagramm.
- */
+// Initialisiert die Leaflet-Karte
+function initMap(startLat, startLon) {
+    document.getElementById('mapContainer').style.display = "block"; // Karte sichtbar machen
+    
+    // Karte erstellen und auf Startkoordinaten zentrieren
+    map = L.map('map').setView([startLat, startLon], 16);
+
+    // OpenStreetMap-Kartenkacheln (Tiles) kostenlos laden
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap-Mitwirkende'
+    }).addTo(map);
+
+    // Rote Nadel (Marker) am Startpunkt setzen
+    mapMarker = L.marker([startLat, startLon]).addTo(map);
+
+    // Blaue Linie für die Route vorbereiten
+    mapRoute = L.polyline([], { color: '#3498db', weight: 4 }).addTo(map);
+}
+
 function createChartOnDemand(sensorName) {
-    if (document.getElementById(`container-${sensorName}`)) return; // Schutz vor doppelter Erstellung
-
-    // Details aus dem Wörterbuch holen (Fallback auf Kürzel, falls etwas fehlt)
+    if (document.getElementById(`container-${sensorName}`)) return; 
     let info = SENSOR_DETAILS[sensorName] || { name: sensorName, einheit: "" };
-    let anzeigename = info.name;
-    let einheit = info.einheit;
-
-    // 1. HTML-Struktur für die Sensor-Card generieren
+    
     let card = document.createElement('div');
     card.id = `container-${sensorName}`;
     card.style = "background: white; margin: 20px auto; padding: 15px; width: 85%; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); text-align: left;";
-    card.innerHTML = `<h3 style="margin-top:0; color:#2c3e50; padding-left:10px;">📊 ${anzeigename} [${einheit}]</h3><canvas id="chart-${sensorName}"></canvas>`;
+    card.innerHTML = `<h3 style="margin-top:0; color:#2c3e50; padding-left:10px;">📊 ${info.name} [${info.einheit}]</h3><canvas id="chart-${sensorName}"></canvas>`;
     document.getElementById('container').appendChild(card); 
 
-    // 2. Zufällige Linienfarbe auswürfeln
     let farbe = '#' + Math.floor(Math.random()*16777215).toString(16);
     let ctx = document.getElementById(`chart-${sensorName}`).getContext('2d');
 
-    // 3. Chart.js Liniendiagramm konfigurieren
     charts[sensorName] = new Chart(ctx, {
         type: 'line',
         data: {
             labels: [], 
-            datasets: [{
-                label: `${anzeigename} (${einheit})`, 
-                data: [], 
-                borderColor: farbe,
-                backgroundColor: farbe + "1A", // 10% Deckkraft für die Flächenfüllung
-                borderWidth: 2,
-                fill: true,
-                pointRadius: 1,      
-                tension: 0.1         
-            }]
+            datasets: [{ label: info.name, data: [], borderColor: farbe, backgroundColor: farbe + "1A", borderWidth: 2, fill: true, pointRadius: 1, tension: 0.1 }]
         },
-        options: {
-            responsive: true,
-            scales: {
-                x: { 
-                    title: { display: true, text: 'Zeitstempel (UTC)' },
-                    ticks: { maxTicksLimit: 5 } 
-                },
-                y: { 
-                    title: { display: true, text: `${anzeigename} in ${einheit}` },
-                    beginAtZero: false 
-                }
-            }
-        }
+        options: { responsive: true, scales: { x: { title: { display: true, text: 'Zeit' }, ticks: { maxTicksLimit: 5 } }, y: { title: { display: true, text: info.einheit }, beginAtZero: false } } }
     });
 }
 
-/**
- * Zentrale Parser-Funktion: Verarbeitet eine einzelne CSV-Zeile.
- * Wird sowohl von der Bluetooth-Notification als auch vom Datei-Reader genutzt.
- */
 function verarbeiteZeile(zeile) {
     let bereinigteZeile = zeile.trim();
-    // Leerzeilen oder doppelte Headerzeilen rigoros überspringen
     if (bereinigteZeile.length === 0 || bereinigteZeile.startsWith("timestamp")) return;
 
     csvDatenSpeicher.push(bereinigteZeile);
     let parts = bereinigteZeile.split(',');
     
-    // Prüfen, ob die Zeile vollständig ist (Zeitstempel + 14 Sensoren = 15 Elemente)
     if(parts.length >= 15) { 
         let timestamp = parts[0]; 
+        let aktuelleLat = parseFloat(parts[7]); // Index 7 in eurer CSV ist lat
+        let aktuelleLon = parseFloat(parts[8]); // Index 8 in eurer CSV ist lon
+
+        // NEU: Wenn gültige GPS-Daten reinkommen, Karte updaten
+        if (aktuelleLat !== 0.0 && aktuelleLon !== 0.0 && !isNaN(aktuelleLat) && !isNaN(aktuelleLon)) {
+            if (!map) {
+                initMap(aktuelleLat, aktuelleLon); // Karte beim ersten GPS-Punkt starten
+            }
+            let neuePosition = [aktuelleLat, aktuelleLon];
+            gpsPunkte.push(neuePosition);
+            
+            mapMarker.setLatLng(neuePosition); // Nadel bewegen
+            mapRoute.setLatLngs(gpsPunkte);   // Linie verlängern
+            
+            // Wenn es Live-Bluetooth ist, die Karte immer mitzentrieren
+            if (bleDevice) {
+                map.setView(neuePosition);
+            }
+        }
         
-        // Jedes Feld der CSV-Zeile dem richtigen Sensor zuordnen
+        // Graphen wie gewohnt befüllen
         for(let i = 0; i < SENSOR_NAMES.length; i++) {
             let sensorName = SENSOR_NAMES[i];
             let wert = parseFloat(parts[i + 1]); 
             
-            // On-Demand-Aktivierung: Diagramm wird erst erstellt, wenn der Sensor echte Daten (!= 0.0) liefert
             if (wert !== 0.0 && !isNaN(wert)) {
                 if (!activeSensors.has(sensorName)) {
                     activeSensors.add(sensorName);
                     createChartOnDemand(sensorName); 
                 }
             }
-            
-            // Wenn das Diagramm für diesen Sensor existiert, Datenpunkte einspeisen
             if (charts[sensorName]) {
                 charts[sensorName].data.labels.push(timestamp);
                 charts[sensorName].data.datasets[0].data.push(wert);
-                
-                // Ringpuffer-Logik: NUR bei Live-Bluetooth die Ansicht auf die letzten 50 Punkte begrenzen,
-                // damit der Browser bei Langzeit-Messungen wegen Performance-Mangel nicht abstürzt.
                 if (bleDevice && charts[sensorName].data.labels.length > 50) {
                     charts[sensorName].data.labels.shift();
                     charts[sensorName].data.datasets[0].data.shift();
                 }
-                // Diagramm rendern ohne Animation (ressourcenschonend für Live-Betrieb)
                 charts[sensorName].update('none');
             }
         }
     }
 }
 
-/**
- * Hilfsfunktion: Schaltet den Datei-Upload-Button visuell und funktionell um (aktiv / inaktiv)
- */
 function setUploadButtonState(disabled) {
     const fileInput = document.getElementById('csvFileInput');
     const label = document.getElementById('uploadLabel');
-    
     fileInput.disabled = disabled;
-    if (disabled) {
-        label.classList.add('disabled');
-    } else {
-        label.classList.remove('disabled');
-    }
+    if (disabled) label.classList.add('disabled'); else label.classList.remove('disabled');
 }
 
-/**
- * Event-Handler: Wird aufgerufen, wenn die Bluetooth-Verbindung abreißt oder manuell getrennt wird.
- * Setzt die Buttons sauber zurück, behält aber alle gelaufenen Daten im Speicher.
- */
 function handleDisconnect() {
-    console.log("Bluetooth-Verbindung wurde getrennt.");
     const btn = document.getElementById('connectBtn');
     btn.innerText = "Logger verbinden";
     btn.style.background = "#3498db";
     btn.disabled = false;
-    
     bleDevice = null;
     bleServer = null;
-
-    // SD-Karten-Upload nach Trennung von Bluetooth wieder freischalten
     setUploadButtonState(false);
 }
 
-/**
- * Klick-Event für den Bluetooth-Button (Verbindungsaufbau ODER manuelles Trennen)
- */
 document.getElementById('connectBtn').addEventListener('click', async () => {
-    // FALL A: Wir sind bereits verbunden -> Bei Klick aktiv die Verbindung kappen
     if (bleDevice && bleDevice.gatt.connected) {
-        console.log("Trenne Verbindung manuell über Website...");
         bleDevice.gatt.disconnect();
         return;
     }
-
-    // FALL B: Wir sind nicht verbunden -> Bluetooth-Scan starten
     try {
-        bleDevice = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e'] // NUS Service UUID
-        });
-        
-        // Event-Listener bindet automatischen Verbindungsabriss an die Reset-Funktion
+        bleDevice = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e'] });
         bleDevice.addEventListener('gattserverdisconnected', handleDisconnect);
         document.getElementById('connectBtn').innerText = "Verbinde...";
-        
         bleServer = await bleDevice.gatt.connect();
-        
-        // IDIOTENSICHERE VERRIEGELUNG: Bei aktiver BLE-Verbindung den Datei-Upload komplett sperren!
         setUploadButtonState(true);
 
         const service = await bleServer.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
-        const characteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e'); // TX Characteristic
-        
+        const characteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
         await characteristic.startNotifications();
+        
         let datenPuffer = ""; 
-
-        // Empfang von Daten-Splittern über Bluetooth
         characteristic.addEventListener('characteristicvaluechanged', (event) => {
             let decoder = new TextDecoder('utf-8');
             datenPuffer += decoder.decode(event.target.value);
-            
-            // Wenn mindestens ein Zeilenumbruch im Puffer ist, ist eine CSV-Zeile komplett
             if (datenPuffer.includes('\n')) {
                 let zeilen = datenPuffer.split('\n');
-                datenPuffer = zeilen.pop(); // Den unvollständigen Rest zurück in den Puffer schreiben
-                
-                zeilen.forEach(zeile => {
-                    verarbeiteZeile(zeile);
-                });
+                datenPuffer = zeilen.pop(); 
+                zeilen.forEach(zeile => { verarbeiteZeile(zeile); });
             }
         });
         
-        // UI auf "Verbunden"-Status umstellen
         document.getElementById('connectBtn').innerText = "Verbindung trennen 🔴";
         document.getElementById('connectBtn').style.background = "#e74c3c";
         document.getElementById('downloadBtn').disabled = false;
-
     } catch (error) {
-        console.log("BLE Fehler: " + error);
         handleDisconnect();
-        alert("Verbindung fehlgeschlagen oder abgebrochen.");
+        alert("Verbindung fehlgeschlagen.");
     }
 });
 
-/**
- * Funktion zum Einlesen und nachträglichen Visualisieren einer alten CSV von der SD-Karte
- */
 function importiereCSV(input) {
     const file = input.files[0];
     if (!file) return;
-
-    // Zusätzlicher Schutz: Falls trotz Sperre eine Datei gewählt wird während BLE läuft -> Abbrechen
-    if (bleDevice && bleDevice.gatt.connected) {
-        alert("Nicht erlaubt während einer aktiven Live-Messung!");
-        return;
-    }
 
     const reader = new FileReader();
     reader.onload = function(e) {
         const text = e.target.result;
         const zeilen = text.split('\n');
 
-        // Dashboard komplett leeren, um Platz für die historischen SD-Karten-Daten zu machen
+        // Dashboard & Karte komplett zurücksetzen
         document.getElementById('container').querySelectorAll('[id^="container-"]').forEach(el => el.remove());
         charts = {};
         activeSensors.clear();
-        csvDatenSpeicher = ["timestamp," + SENSOR_NAMES.join(",")]; // Speicher resetten
+        csvDatenSpeicher = ["timestamp," + SENSOR_NAMES.join(",")];
+        if(map) { map.remove(); map = null; gpsPunkte = []; } // Alte Karte löschen
 
-        // Gesamte Datei Zeile für Zeile durchparsen
-        zeilen.forEach(zeile => {
-            verarbeiteZeile(zeile);
-        });
-
-        // Alle Diagramme am Ende einmal komplett final zeichnen (da alle Daten auf einmal kamen)
+        zeilen.forEach(zeile => { verarbeiteZeile(zeile); });
         Object.keys(charts).forEach(key => charts[key].update());
+        
+        // Wenn am Ende des Imports Punkte auf der Karte sind, zoome so, dass man die GANZE Route sieht!
+        if (map && gpsPunkte.length > 0) {
+            map.fitBounds(mapRoute.getBounds());
+        }
 
         document.getElementById('downloadBtn').disabled = false;
-        
-        // IDIOTENSICHERE VERRIEGELUNG: Bluetooth-Kopplung komplett sperren, solange Import-Daten angezeigt werden
         const connBtn = document.getElementById('connectBtn');
         connBtn.disabled = true;
         connBtn.style.background = "#bdc3c7";
         connBtn.innerText = "Kopplung gesperrt (Datei geladen)";
         
-        alert("SD-Karten CSV erfolgreich geladen und visualisiert!\nZum Freischalten von Bluetooth bitte die Seite neu laden (F5).");
+        alert("Daten geladen! Scroll nach unten, um die Route auf der Karte zu sehen.");
     };
     reader.readAsText(file);
 }
 
-/**
- * Generiert aus dem internen Datenpuffer eine CSV-Datei und startet den Browser-Download
- */
 function downloadCSV() {
     if(csvDatenSpeicher.length <= 1) return;
-    
     let csvContent = "data:text/csv;charset=utf-8," + csvDatenSpeicher.join("\n");
     let encodedUri = encodeURI(csvContent);
     let link = document.createElement("a");
     link.setAttribute("href", encodedUri);
     link.setAttribute("download", "datalogger_export.csv");
     document.body.appendChild(link);
-    
-    link.click(); // Download automatisch triggern
+    link.click();
     document.body.removeChild(link);
 }
 </script>
