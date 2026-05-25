@@ -6,6 +6,9 @@
     <title>🛰️ DataLogger Live-Dashboard & Map</title>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
@@ -27,8 +30,6 @@
             margin-bottom: 25px;
             font-weight: 700;
         }
-
-        /* NEU: Schicker Container für die Steuerzentrale */
         .control-panel {
             background: white;
             padding: 20px;
@@ -40,11 +41,9 @@
             gap: 15px;
             align-items: center;
         }
-
-        /* Einheitliches, modernes Button-Design */
         button, .file-upload-btn {
             box-sizing: border-box;
-            width: 100%; /* Füllt die Raster-Zelle perfekt aus */
+            width: 100%;
             padding: 14px 20px;
             font-size: 15px;
             font-weight: 600;
@@ -55,11 +54,9 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 8px; /* Abstand zwischen Icon und Text */
+            gap: 8px;
             text-decoration: none;
         }
-
-        /* Farb-Themen für die Buttons */
         #connectBtn { background-color: #3498db; color: white; }
         #connectBtn:hover:not(:disabled) { background-color: #2980b9; transform: translateY(-1px); }
         
@@ -72,7 +69,6 @@
         #mapToggleBtn { background-color: #9b59b6; color: white; }
         #mapToggleBtn:hover:not(:disabled) { background-color: #8e44ad; transform: translateY(-1px); }
 
-        /* Globaler Deaktivierungs-Status (wird weich ausgegraut) */
         button:disabled, .file-upload-btn.disabled {
             background-color: #e0e4e8 !important;
             color: #8a94a0 !important;
@@ -80,10 +76,8 @@
             transform: none !important;
             box-shadow: none !important;
         }
-        
         #csvFileInput { display: none; }
 
-        /* Karten-Container-Styling */
         #mapContainer {
             display: none;
             background: white;
@@ -95,11 +89,14 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.05);
             text-align: left;
         }
-        #map {
-            width: 100%;
-            height: 480px;
-            border-radius: 6px;
-            margin-top: 10px;
+        #map { width: 100%; height: 480px; border-radius: 6px; margin-top: 10px; }
+        
+        .zoom-hint {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: -5px;
+            margin-bottom: 10px;
+            padding-left: 10px;
         }
     </style>
 </head>
@@ -110,12 +107,9 @@
     
     <div class="control-panel">
         <button id="connectBtn">🔗 Logger verbinden</button>
-        
         <label for="csvFileInput" id="uploadLabel" class="file-upload-btn">📂 CSV hochladen</label>
         <input type="file" id="csvFileInput" accept=".csv" onchange="importiereCSV(this)">
-        
         <button id="mapToggleBtn" onclick="toggleMapView()" disabled>🗺️ Route anzeigen</button>
-        
         <button id="downloadBtn" onclick="downloadCSV()" disabled>💾 CSV speichern</button>
     </div>
 
@@ -155,13 +149,35 @@ let csvDatenSpeicher = ["timestamp," + SENSOR_NAMES.join(",")];
 let bleDevice = null;
 let bleServer = null;
 
-// Karten-Variablen
 let map = null;
 let mapMarker = null;
 let mapRoute = null;
 let gpsPunkte = []; 
 let ersterEchterLat = null;
 let ersterEchterLon = null;
+
+/**
+ * Hilfsfunktion: Wandelt den rohen ISO-Zeitstempel (z.B. 2026-05-19T15:39:11Z) 
+ * in ein sauberes, deutsches Datums- und Uhrzeitformat in Lokalzeit um.
+ */
+function formatiereZeitstempel(rawTimestamp) {
+    try {
+        const date = new Date(rawTimestamp);
+        if (isNaN(date.getTime())) return rawTimestamp; // Fallback, falls Format fehlerhaft
+        
+        // Formatiert zu: DD.MM.YYYY, HH:MM:SS (in der lokalen Zeitzone des PCs/Handys)
+        return date.toLocaleString('de-DE', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } catch(e) {
+        return rawTimestamp;
+    }
+}
 
 function toggleMapView() {
     const container = document.getElementById('mapContainer');
@@ -199,7 +215,8 @@ function createChartOnDemand(sensorName) {
     let card = document.createElement('div');
     card.id = `container-${sensorName}`;
     card.style = "background: white; margin: 20px auto; padding: 15px; width: 100%; box-sizing: border-box; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); text-align: left;";
-    card.innerHTML = `<h3 style="margin-top:0; color:#2c3e50; padding-left:10px;">📊 ${info.name} [${info.einheit}]</h3><canvas id="chart-${sensorName}"></canvas>`;
+    // Hinweis zum Zoomen hinzugefügt
+    card.innerHTML = `<h3 style="margin-top:0; color:#2c3e50; padding-left:10px; margin-bottom:5px;">📊 ${info.name} [${info.einheit}]</h3><div class="zoom-hint">🔍 Mausrad zum Zoomen / Ziehen zum Verschieben</div><canvas id="chart-${sensorName}"></canvas>`;
     document.getElementById('container').appendChild(card); 
 
     let farbe = '#' + Math.floor(Math.random()*16777215).toString(16);
@@ -211,7 +228,27 @@ function createChartOnDemand(sensorName) {
             labels: [], 
             datasets: [{ label: info.name, data: [], borderColor: farbe, backgroundColor: farbe + "1A", borderWidth: 2, fill: true, pointRadius: 1, tension: 0.1 }]
         },
-        options: { responsive: true, scales: { x: { title: { display: true, text: 'Zeit' }, ticks: { maxTicksLimit: 5 } }, y: { title: { display: true, text: info.einheit }, beginAtZero: false } } }
+        options: { 
+            responsive: true, 
+            scales: { 
+                x: { title: { display: true, text: 'Zeitstempel (Lokalzeit)' }, ticks: { maxTicksLimit: 5 } }, 
+                y: { title: { display: true, text: info.einheit }, beginAtZero: false } 
+            },
+            // NEU: Zoom- und Pan-Konfiguration direkt im Chart integriert
+            plugins: {
+                zoom: {
+                    pan: {
+                        enabled: true,
+                        mode: 'x', // Verschieben nur auf der Zeitachse (X) erlauben
+                    },
+                    zoom: {
+                        wheel: { enabled: true }, // Mausrad aktivieren
+                        pinch: { enabled: true }, // Touch-Gesten für Handys aktivieren
+                        mode: 'x', // Zoomen nur auf der Zeitachse (X) erlauben
+                    }
+                }
+            }
+        }
     });
 }
 
@@ -223,21 +260,20 @@ function verarbeiteZeile(zeile) {
     let parts = bereinigteZeile.split(',');
     
     if(parts.length >= 15) { 
-        let timestamp = parts[0]; 
-        let aktuelleLat = parseFloat(parts[7]); // Index 7 in eurer CSV ist lat
-        let aktuelleLon = parseFloat(parts[8]); // Index 8 in eurer CSV ist lon
+        let rawTimestamp = parts[0]; 
+        let formatierterZeitstempel = formatiereZeitstempel(rawTimestamp); // Zeitachse schick machen
+        
+        let aktuelleLat = parseFloat(parts[7]); 
+        let aktuelleLon = parseFloat(parts[8]); 
 
-        // 1. KARTEN-LOGIK: Hier filtern wir die 0.0 strikt heraus!
         if (aktuelleLat !== 0.0 && aktuelleLon !== 0.0 && !isNaN(aktuelleLat) && !isNaN(aktuelleLon)) {
             if (ersterEchterLat === null) {
                 ersterEchterLat = aktuelleLat;
                 ersterEchterLon = aktuelleLon;
             }
-            
             let neuePosition = [aktuelleLat, aktuelleLon];
             gpsPunkte.push(neuePosition);
             
-            // Button für die Karte freischalten
             document.getElementById('mapToggleBtn').disabled = false;
             
             if (map) {
@@ -247,13 +283,10 @@ function verarbeiteZeile(zeile) {
             }
         }
         
-        // 2. GRAPHEN-LOGIK: Hier bleibt ALLES drin (auch die 0.0)
         for(let i = 0; i < SENSOR_NAMES.length; i++) {
             let sensorName = SENSOR_NAMES[i];
             let wert = parseFloat(parts[i + 1]); 
 
-            // Wichtig: Wir überspringen im Graphen nichts mehr! 
-            // Ein Absturz auf 0.0 wird jetzt exakt so gezeichnet, wie er in der CSV steht.
             if (!isNaN(wert)) {
                 if (!activeSensors.has(sensorName)) {
                     activeSensors.add(sensorName);
@@ -261,9 +294,8 @@ function verarbeiteZeile(zeile) {
                 }
             }
             if (charts[sensorName]) {
-                charts[sensorName].data.labels.push(timestamp);
+                charts[sensorName].data.labels.push(formatierterZeitstempel); // Nutzt das neue Format
                 charts[sensorName].data.datasets[0].data.push(wert);
-                
                 if (bleDevice && charts[sensorName].data.labels.length > 50) {
                     charts[sensorName].data.labels.shift();
                     charts[sensorName].data.datasets[0].data.shift();
@@ -273,6 +305,7 @@ function verarbeiteZeile(zeile) {
         }
     }
 }
+
 function setUploadButtonState(disabled) {
     const fileInput = document.getElementById('csvFileInput');
     const label = document.getElementById('uploadLabel');
@@ -343,7 +376,7 @@ function importiereCSV(input) {
         connBtn.disabled = true; connBtn.style.background = "#bdc3c7";
         connBtn.innerText = "🔒 Kopplung gesperrt";
         
-        alert("Daten geladen! Der GPS-Button ist jetzt einsatzbereit.");
+        alert("Daten geladen! Graphen sind jetzt zoombar.");
     };
     reader.readAsText(file);
 }
