@@ -155,8 +155,8 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     // FALL B: Wir sind NICHT verbunden -> Normalen Verbindungsaufbau starten
     try {
         bleDevice = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: ['e400001-b5a3-f393-e0a9-e50e24dcca9e', '6e400001-b5a3-f393-e0a9-e50e24dcca9e']
+    acceptAllDevices: true,
+    optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
         });
         
         // Event registrieren: Falls der Arduino die Verbindung trennt (z.B. über sein Menü)
