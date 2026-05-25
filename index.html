@@ -59,7 +59,7 @@
 <body>
 
 <div id="container">
-    <h1>🛰️ SPI Datalogger Live-Dashboard</h1>
+    <h1>🛰️ DataLogger Live-Dashboard</h1>
     <button id="connectBtn">Logger verbinden</button>
     <button id="downloadBtn" onclick="downloadCSV()" disabled>Daten als CSV speichern</button>
     <br><br>
@@ -132,7 +132,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     try {
         // Suche nach dem Arduino mit dem korrekten Namen und Service
         const device = await navigator.bluetooth.requestDevice({
-            filters: [{ name: 'SPI-Datalogger' }],
+            filters: [{ name: 'DataLogger' }],
             optionalServices: ['6E400001-B5A3-F393-E0A9-E50E24DCCA9E']
         });
         
