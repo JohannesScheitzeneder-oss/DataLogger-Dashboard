@@ -437,9 +437,24 @@ function renderOledCanvas(buffer) {
 }
 
 async function sendEncoderCmd(cmd) {
-    if (!window._rxEncoderChar) return;
-    try { await window._rxEncoderChar.writeValueWithoutResponse(new TextEncoder().encode(cmd)); } 
-    catch(e) { console.warn('BLE write failed:', e); }
+    if (!window._rxEncoderChar) {
+        alert("⚠️ Fehler: Der Button-Kanal wurde beim Verbinden nicht gefunden! Schau in die F12-Konsole.");
+        return;
+    }
+    try { 
+        // 1. Versuch: Mit Bestätigung (Standard für BLEWrite)
+        await window._rxEncoderChar.writeValueWithResponse(new TextEncoder().encode(cmd)); 
+        console.log("Erfolgreich gesendet:", cmd);
+    } catch(e) { 
+        // 2. Versuch (Fallback): Ohne Bestätigung
+        try {
+            await window._rxEncoderChar.writeValueWithoutResponse(new TextEncoder().encode(cmd));
+            console.log("Erfolgreich gesendet (Fallback):", cmd);
+        } catch(e2) {
+            console.error('BLE Schreibfehler:', e2);
+            alert("Funkfehler beim Senden: " + e2.message);
+        }
+    }
 }
  
 function importiereCSV(input) {
