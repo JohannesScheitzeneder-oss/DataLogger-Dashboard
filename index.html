@@ -99,7 +99,6 @@
             padding-left: 10px;
         }
 
-        /* ── ÄNDERUNG 7: CSS für remotePanel-Buttons ── */
         #remotePanel button:hover {
             filter: brightness(1.15);
             transform: translateY(-1px);
@@ -121,7 +120,7 @@
         <label for="csvFileInput" id="uploadLabel" class="file-upload-btn">📂 CSV hochladen</label>
         <input type="file" id="csvFileInput" accept=".csv" onchange="importiereCSV(this)">
         <button id="mapToggleBtn" onclick="toggleMapView()" disabled>🗺️ Route anzeigen</button>
-        <button id="downloadBtn" onclick="downloadCSV()" disabled>💾 CSV speichern</button>
+        <button id="downloadBtn" onclick="downloadCSV()" disabled>💾 CSV保存</button>
     </div>
  
     <div id="mapContainer">
@@ -156,33 +155,14 @@
         <h3 style="margin-top:0; color:#2c3e50;">🎛️ Fernsteuerung</h3>
 
         <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-            <button onclick="sendEncoderCmd('L')"
-                style="font-size:22px; padding:10px 18px; border-radius:8px;
-                       background:#3498db; color:white; border:none; cursor:pointer;">
-                ◀
-            </button>
-
-            <button onclick="sendEncoderCmd('R')"
-                style="font-size:22px; padding:10px 18px; border-radius:8px;
-                       background:#3498db; color:white; border:none; cursor:pointer;">
-                ▶
-            </button>
-
-            <button onclick="sendEncoderCmd('C')"
-                style="font-size:18px; padding:10px 18px; border-radius:8px;
-                       background:#27ae60; color:white; border:none; cursor:pointer;">
-                ✓ Klick
-            </button>
-
-            <button onclick="sendEncoderCmd('X')"
-                style="font-size:18px; padding:10px 18px; border-radius:8px;
-                       background:#e67e22; color:white; border:none; cursor:pointer;">
-                ☰ Menü
-            </button>
+            <button onclick="sendEncoderCmd('L')" style="font-size:22px; padding:10px 18px; border-radius:8px; background:#3498db; color:white; border:none; cursor:pointer;">◀</button>
+            <button onclick="sendEncoderCmd('R')" style="font-size:22px; padding:10px 18px; border-radius:8px; background:#3498db; color:white; border:none; cursor:pointer;">▶</button>
+            <button onclick="sendEncoderCmd('C')" style="font-size:18px; padding:10px 18px; border-radius:8px; background:#27ae60; color:white; border:none; cursor:pointer;">✓ Klick</button>
+            <button onclick="sendEncoderCmd('X')" style="font-size:18px; padding:10px 18px; border-radius:8px; background:#e67e22; color:white; border:none; cursor:pointer;">☰ Menü</button>
         </div>
 
         <p style="font-size:12px; color:#7f8c8d; margin-top:12px;">
-            ◀ ▶ = Encoder drehen &nbsp;|&nbsp; ✓ = kurzer Klick &nbsp;|&nbsp; ☰ = Menü ein/aus (2 s Longpress)
+            ◀ ▶ = Encoder drehen &nbsp;|&nbsp; ✓ = kurzer Klick &nbsp;|&nbsp; ☰ = Menü (2 s drücken)
         </p>
     </div>
 </div>
@@ -224,59 +204,34 @@ let gpsPunkte = [];
 let ersterEchterLat = null;
 let ersterEchterLon = null;
  
-/**
- * Hilfsfunktion: Wandelt den rohen ISO-Zeitstempel (z.B. 2026-05-19T15:39:11Z) 
- * in ein sauberes, deutsches Datums- und Uhrzeitformat in Lokalzeit um.
- */
 function formatiereZeitstempel(rawTimestamp) {
     try {
         if (rawTimestamp.includes('T') && rawTimestamp.includes('Z')) {
             let [datum, zeit] = rawTimestamp.replace('Z', '').split('T');
             let zeitTeile = zeit.split(':');
-            
             if (zeitTeile.length === 3) {
-                let hh = zeitTeile[0].padStart(2, '0');
-                let mm = zeitTeile[1].padStart(2, '0');
-                let ss = zeitTeile[2].padStart(2, '0');
-                rawTimestamp = `${datum}T${hh}:${mm}:${ss}Z`; 
+                rawTimestamp = `${datum}T${zeitTeile[0].padStart(2, '0')}:${zeitTeile[1].padStart(2, '0')}:${zeitTeile[2].padStart(2, '0')}Z`; 
             }
         }
- 
         const date = new Date(rawTimestamp);
         if (isNaN(date.getTime())) return rawTimestamp; 
-        
-        return date.toLocaleString('de-DE', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
-        });
-    } catch(e) {
-        return rawTimestamp;
-    }
+        return date.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch(e) { return rawTimestamp; }
 }
  
 function toggleMapView() {
     const container = document.getElementById('mapContainer');
     const btn = document.getElementById('mapToggleBtn');
-    
     if (container.style.display === "none" || container.style.display === "") {
         container.style.display = "block";
         btn.innerText = "🗺️ Route ausblenden";
-        
         if (!map && ersterEchterLat && ersterEchterLon) {
             map = L.map('map').setView([ersterEchterLat, ersterEchterLon], 16);
-           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap'
-            }).addTo(map);
- 
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
             mapMarker = L.marker([ersterEchterLat, ersterEchterLon]).addTo(map);
             mapRoute = L.polyline(gpsPunkte, { color: '#2ecc71', weight: 5 }).addTo(map);
-            
-            if (gpsPunkte.length > 1) {
-               map.fitBounds(mapRoute.getBounds());
-            }
-        } else if (map) {
-            map.invalidateSize();
-        }
+            if (gpsPunkte.length > 1) map.fitBounds(mapRoute.getBounds());
+        } else if (map) { map.invalidateSize(); }
     } else {
         container.style.display = "none";
         btn.innerText = "🗺️ Route anzeigen";
@@ -291,36 +246,21 @@ function createChartOnDemand(sensorName) {
     card.id = `container-${sensorName}`;
     card.style = "background: white; margin: 20px auto; padding: 15px; width: 100%; box-sizing: border-box; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); text-align: left;";
     card.innerHTML = `<h3 style="margin-top:0; color:#2c3e50; padding-left:10px; margin-bottom:5px;">📊 ${info.name} [${info.einheit}]</h3><div class="zoom-hint">🔍 Mausrad zum Zoomen / Ziehen zum Verschieben</div><canvas id="chart-${sensorName}"></canvas>`;
-   document.getElementById('container').appendChild(card); 
+    document.getElementById('container').appendChild(card); 
  
     let farbe = '#' + Math.floor(Math.random()*16777215).toString(16);
     let ctx = document.getElementById(`chart-${sensorName}`).getContext('2d');
  
     charts[sensorName] = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: [], 
-            datasets: [{ label: info.name, data: [], borderColor: farbe, backgroundColor: farbe + "1A", borderWidth: 2, fill: true, pointRadius: 1, tension: 0.1 }]
-        },
+        data: { labels: [], datasets: [{ label: info.name, data: [], borderColor: farbe, backgroundColor: farbe + "1A", borderWidth: 2, fill: true, pointRadius: 1, tension: 0.1 }] },
         options: { 
             responsive: true, 
             scales: { 
-                x: { title: { display: true, text: 'Zeitstempel (Lokalzeit)' }, ticks: { maxTicksLimit: 5 } }, 
+                x: { title: { display: true, text: 'Zeitstempel' }, ticks: { maxTicksLimit: 5 } }, 
                 y: { title: { display: true, text: info.einheit }, beginAtZero: false } 
             },
-            plugins: {
-                zoom: {
-                    pan: {
-                        enabled: true,
-                        mode: 'x', 
-                    },
-                    zoom: {
-                        wheel: { enabled: true }, 
-                        pinch: { enabled: true }, 
-                        mode: 'x', 
-                    }
-                }
-            }
+            plugins: { zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } }
         }
     });
 }
@@ -328,29 +268,22 @@ function createChartOnDemand(sensorName) {
 function verarbeiteZeile(zeile) {
     let bereinigteZeile = zeile.trim();
     if (bereinigteZeile.length === 0 || bereinigteZeile.startsWith("timestamp")) return;
- 
     csvDatenSpeicher.push(bereinigteZeile);
     let parts = bereinigteZeile.split(',');
     
     if(parts.length >= 15) { 
         let rawTimestamp = parts[0]; 
         let formatierterZeitstempel = formatiereZeitstempel(rawTimestamp); 
-        
         let aktuelleLat = parseFloat(parts[7]);
         let aktuelleLon = parseFloat(parts[8]);
  
         if (aktuelleLat !== 0.0 && aktuelleLon !== 0.0 && !isNaN(aktuelleLat) && !isNaN(aktuelleLon)) {
-            if (ersterEchterLat === null) {
-                ersterEchterLat = aktuelleLat;
-                ersterEchterLon = aktuelleLon;
-            }
+            if (ersterEchterLat === null) { ersterEchterLat = aktuelleLat; ersterEchterLon = aktuelleLon; }
             let neuePosition = [aktuelleLat, aktuelleLon];
             gpsPunkte.push(neuePosition);
-            
-           document.getElementById('mapToggleBtn').disabled = false;
-            
+            document.getElementById('mapToggleBtn').disabled = false;
             if (map) {
-               mapMarker.setLatLng(neuePosition);
+                mapMarker.setLatLng(neuePosition);
                 mapRoute.setLatLngs(gpsPunkte);
                 if (bleDevice) map.setView(neuePosition);
             }
@@ -359,21 +292,17 @@ function verarbeiteZeile(zeile) {
         for(let i = 0; i < SENSOR_NAMES.length; i++) {
             let sensorName = SENSOR_NAMES[i];
             let wert = parseFloat(parts[i + 1]); 
- 
             if (!isNaN(wert)) {
-                if (!activeSensors.has(sensorName)) {
-                   activeSensors.add(sensorName);
-                   createChartOnDemand(sensorName); 
-                }
+                if (!activeSensors.has(sensorName)) { activeSensors.add(sensorName); createChartOnDemand(sensorName); }
             }
             if (charts[sensorName]) {
-               charts[sensorName].data.labels.push(formatierterZeitstempel); 
-               charts[sensorName].data.datasets[0].data.push(wert);
+                charts[sensorName].data.labels.push(formatierterZeitstempel); 
+                charts[sensorName].data.datasets[0].data.push(wert);
                 if (bleDevice && charts[sensorName].data.labels.length > 50) {
-                   charts[sensorName].data.labels.shift();
-                   charts[sensorName].data.datasets[0].data.shift();
+                    charts[sensorName].data.labels.shift();
+                    charts[sensorName].data.datasets[0].data.shift();
                 }
-               charts[sensorName].update('none');
+                charts[sensorName].update('none');
             }
         }
     }
@@ -391,8 +320,6 @@ function handleDisconnect() {
     btn.innerText = "🔗 Logger verbinden"; btn.style.background = "#3498db"; btn.disabled = false;
     bleDevice = null; bleServer = null;
     setUploadButtonState(false);
-
-    /* ── ÄNDERUNG 6: remotePanel ausblenden bei Trennung ── */
     document.getElementById('remotePanel').style.display = 'none';
     window._rxEncoderChar = null;
 }
@@ -400,12 +327,11 @@ function handleDisconnect() {
 document.getElementById('connectBtn').addEventListener('click', async () => {
     if (bleDevice && bleDevice.gatt.connected) { bleDevice.gatt.disconnect(); return; }
     try {
-        /* ── ÄNDERUNG 1: optionalServices erweitern um Display TX ── */
         bleDevice = await navigator.bluetooth.requestDevice({ 
             acceptAllDevices: true, 
             optionalServices: [
                 '6e400001-b5a3-f393-e0a9-e50e24dcca9e',   // NUS Service
-                '6e400004-b5a3-f393-e0a9-e50e24dcca9e'    // Display TX (custom)
+                '6e400004-b5a3-f393-e0a9-e50e24dcca9e'    // Display TX Service
             ] 
         });
         bleDevice.addEventListener('gattserverdisconnected', handleDisconnect);
@@ -413,14 +339,18 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         bleServer = await bleDevice.gatt.connect();
         setUploadButtonState(true);
  
+        // 1. NUS Service holen
         const service = await bleServer.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
+        
+        // 2. Datenstrom-Charakteristik holen
         const characteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
         await characteristic.startNotifications();
         
-        /* ── ÄNDERUNG 2: Connect-Handler erweitern (RX Encoder & Display empfangen) ── */
+        // 3. Encoder-Charakteristik holen
         const rxEncoderChar = await service.getCharacteristic('6e400002-b5a3-f393-e0a9-e50e24dcca9e');
-        window._rxEncoderChar = rxEncoderChar; // global für Encoder-Buttons zugänglich machen
+        window._rxEncoderChar = rxEncoderChar; 
 
+        // 4. Display-Charakteristik holen
         const txDispChar = await service.getCharacteristic('6e400004-b5a3-f393-e0a9-e50e24dcca9e');
         await txDispChar.startNotifications();
 
@@ -434,18 +364,12 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
             const chunkIdx   = data[0];
             const chunkTotal = data[1];
             const payload    = data.slice(2);
-
             const offset = chunkIdx * CHUNK_DATA;
             dispBuffer.set(payload, offset);
             chunksReceived.add(chunkIdx);
-
-            if (chunksReceived.size === chunkTotal) {
-                renderOledCanvas(dispBuffer);
-                chunksReceived.clear();
-            }
+            if (chunksReceived.size === chunkTotal) { renderOledCanvas(dispBuffer); chunksReceived.clear(); }
         });
 
-        // Sensor-Datenstrom verarbeiten (original)
         let datenPuffer = ""; 
         characteristic.addEventListener('characteristicvaluechanged', (event) => {
             let decoder = new TextDecoder('utf-8');
@@ -459,32 +383,30 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         document.getElementById('connectBtn').innerText = "❌ Verbindung trennen";
         document.getElementById('connectBtn').style.background = "#e74c3c";
         document.getElementById('downloadBtn').disabled = false;
-
-        /* ── ÄNDERUNG 5: remotePanel einblenden wenn verbunden ── */
         document.getElementById('remotePanel').style.display = 'block';
 
-    } catch (error) { handleDisconnect(); alert("Verbindung fehlgeschlagen."); }
+    } catch (error) { 
+        handleDisconnect(); 
+        console.error("BLE-Fehler:", error);
+        // ERWEITERTES ERROR-REPORTING:
+        alert("Verbindung fehlgeschlagen!\n\nDetails: " + error.name + " -> " + error.message); 
+    }
 });
 
-/* ── ÄNDERUNG 3: renderOledCanvas und sendEncoderCmd Funktionen ── */
 function renderOledCanvas(buffer) {
     const canvas = document.getElementById('oledCanvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const img = ctx.createImageData(128, 64);
-
     for (let page = 0; page < 8; page++) {
         for (let col = 0; col < 128; col++) {
             const byte = buffer[page * 128 + col];
             for (let bit = 0; bit < 8; bit++) {
-                const row    = page * 8 + bit;
-                const on     = (byte >> bit) & 1;
-                const i      = (row * 128 + col) * 4;
-                const bright = on ? 255 : 15;     // 15 = dunkles Grau statt reinem Schwarz
-                img.data[i]     = bright;         // R
-                img.data[i + 1] = bright;         // G
-                img.data[i + 2] = bright;         // B
-                img.data[i + 3] = 255;            // A
+                const row = page * 8 + bit;
+                const on = (byte >> bit) & 1;
+                const i = (row * 128 + col) * 4;
+                const bright = on ? 255 : 15;
+                img.data[i] = bright; img.data[i + 1] = bright; img.data[i + 2] = bright; img.data[i + 3] = 255;
             }
         }
     }
@@ -493,75 +415,33 @@ function renderOledCanvas(buffer) {
 
 async function sendEncoderCmd(cmd) {
     if (!window._rxEncoderChar) return;
-    try {
-        await window._rxEncoderChar.writeValueWithoutResponse(
-            new TextEncoder().encode(cmd)
-        );
-    } catch(e) { console.warn('BLE write failed:', e); }
+    try { await window._rxEncoderChar.writeValueWithoutResponse(new TextEncoder().encode(cmd)); } 
+    catch(e) { console.warn('BLE write failed:', e); }
 }
  
 function importiereCSV(input) {
     const file = input.files[0];
     if (!file) return;
- 
     const reader = new FileReader();
     reader.onload = function(e) {
-        const text = e.target.result;
-        const zeilen = text.split('\n');
- 
-        if (zeilen.length < 2) {
-            alert("❌ Fehler: Die Datei ist leer oder enthält keine Datenzeilen!");
-            input.value = ""; 
-            return;
-        }
- 
+        const text = e.target.result; const zeilen = text.split('\n');
+        if (zeilen.length < 2) { alert("❌ Fehler: Datei leer!"); input.value = ""; return; }
         let kopfzeile = zeilen[0].trim().toLowerCase();
-        if (!kopfzeile.startsWith("timestamp") || !kopfzeile.includes("accelx") || !kopfzeile.includes("battvoltage")) {
-            alert("❌ Ungültiges Dateiformat!\n\nDie hochgeladene CSV-Datei hat nicht die erforderliche Struktur.\nEs müssen die Sensor-Spalten eures DataLoggers enthalten sein.");
-            input.value = ""; 
-            return;
-        }
- 
-        let ersteDatenzeile = zeilen[1].trim();
-        let testTeile = ersteDatenzeile.split(',');
+        if (!kopfzeile.startsWith("timestamp") || !kopfzeile.includes("accelx")) { alert("❌ Ungültiges Format!"); input.value = ""; return; }
         
-        if (testTeile.length < 15) {
-            alert(`❌ Strukturfehler!\n\nErwartet wurden mindestens 15 Datenspalten, die Datei liefert in Zeile 2 aber nur ${testTeile.length} Spalten. Bitte überprüfe das Trennzeichen (Komma).`);
-            input.value = "";
-            return;
-        }
- 
-        let bereinigterTestZeitstempel = formatiereZeitstempel(testTeile[0]);
-        if (bereinigterTestZeitstempel === testTeile[0] && isNaN(new Date(testTeile[0]).getTime())) {
-            alert("❌ Datenfehler!\n\nDer Zeitstempel in der ersten Datenzeile ist ungültig oder kein echtes Datumsformat.");
-            input.value = "";
-            return;
-        }
- 
         document.getElementById('container').querySelectorAll('[id^="container-"]').forEach(el => el.remove());
-        charts = {}; 
-        activeSensors.clear();
+        charts = {}; activeSensors.clear();
         csvDatenSpeicher = ["timestamp," + SENSOR_NAMES.join(",")];
-        
         if(map) { map.remove(); map = null; }
         gpsPunkte = []; ersterEchterLat = null; ersterEchterLon = null;
         document.getElementById('mapContainer').style.display = "none";
-        document.getElementById('mapToggleBtn').innerText = "🗺️ Route anzeigen";
         document.getElementById('mapToggleBtn').disabled = true;
  
-        zeilen.forEach(zeile => { 
-            verarbeiteZeile(zeile); 
-        });
-        
+        zeilen.forEach(zeile => { verarbeiteZeile(zeile); });
         Object.keys(charts).forEach(key => charts[key].update());
-        
         document.getElementById('downloadBtn').disabled = false;
         const connBtn = document.getElementById('connectBtn');
-        connBtn.disabled = true; 
-        connBtn.style.background = "#bdc3c7";
-        connBtn.innerText = "🔒 Kopplung gesperrt";
-        
-        alert("🎉 Daten erfolgreich geladen und überprüft!");
+        connBtn.disabled = true; connBtn.style.background = "#bdc3c7"; connBtn.innerText = "🔒 Kopplung gesperrt";
     };
     reader.readAsText(file);
 }
@@ -571,10 +451,8 @@ function downloadCSV() {
     let csvContent = "data:text/csv;charset=utf-8," + csvDatenSpeicher.join("\n");
     let encodedUri = encodeURI(csvContent);
     let link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "datalogger_export.csv");
-    document.body.appendChild(link);
-    link.click(); document.body.removeChild(link);
+    link.setAttribute("href", encodedUri); link.setAttribute("download", "datalogger_export.csv");
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
 </script>
 </body>
