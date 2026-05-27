@@ -330,8 +330,8 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         bleDevice = await navigator.bluetooth.requestDevice({ 
             acceptAllDevices: true, 
             optionalServices: [
-                '6e400001-b5a3-f393-e0a9-e50e24dcca9e',   // NUS Service
-                '6e400004-b5a3-f393-e0a9-e50e24dcca9e'    // Display TX Service
+                '6e400001-b5a3-f393-e0a9-e50e24dcca9e',   
+                '6e400004-b5a3-f393-e0a9-e50e24dcca9e'    
             ] 
         });
         bleDevice.addEventListener('gattserverdisconnected', handleDisconnect);
@@ -339,47 +339,37 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         bleServer = await bleDevice.gatt.connect();
         setUploadButtonState(true);
  
-        // 1. Haupt-NUS Service holen
         const service = await bleServer.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
         
-        // 2. Datenstrom-Charakteristik holen (Sensordaten)
         const characteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
         await characteristic.startNotifications();
         
-        // --- SICHERHEITSNETZ START ---
         let encoderGefunden = false;
         let displayGefunden = false;
 
-        // 3. Encoder-Charakteristik holen (FEHLERTOLERANT)
         try {
             const rxEncoderChar = await service.getCharacteristic('6e400002-b5a3-f393-e0a9-e50e24dcca9e');
             window._rxEncoderChar = rxEncoderChar; 
             encoderGefunden = true;
-        } catch (e) {
-            console.warn("Encoder-Charakteristik nicht im Hauptservice gefunden:", e);
-        }
+        } catch (e) { console.warn("Encoder nicht gefunden:", e); }
 
-        // 4. Display-Charakteristik holen (FEHLERTOLERANT)
         let txDispChar = null;
         try {
             txDispChar = await service.getCharacteristic('6e400004-b5a3-f393-e0a9-e50e24dcca9e');
             displayGefunden = true;
         } catch (e) {
             try {
-                // Alternativpfad prüfen, falls eigener Service
                 const dispService = await bleServer.getPrimaryService('6e400004-b5a3-f393-e0a9-e50e24dcca9e');
                 txDispChar = await dispService.getCharacteristic('6e400004-b5a3-f393-e0a9-e50e24dcca9e');
                 displayGefunden = true;
-            } catch (e2) {
-                console.warn("Display-Charakteristik nirgends gefunden:", e2);
-            }
+            } catch (e2) { console.warn("Display nicht gefunden:", e2); }
         }
 
-        // Display-Empfänger aktivieren, falls geladen
         if (txDispChar) {
             await txDispChar.startNotifications();
             const DISP_BYTES = 1024;
-            const CHUNK_DATA = 200;
+            // KORREKTUR: Auf 16 Bytes angepasst, passend zum Standard-Bluetooth-Limit!
+            const CHUNK_DATA = 16; 
             let dispBuffer = new Uint8Array(DISP_BYTES);
             let chunksReceived = new Set();
 
@@ -389,14 +379,19 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
                 const chunkTotal = data[1];
                 const payload    = data.slice(2);
                 const offset = chunkIdx * CHUNK_DATA;
-                dispBuffer.set(payload, offset);
-                chunksReceived.add(chunkIdx);
-                if (chunksReceived.size === chunkTotal) { renderOledCanvas(dispBuffer); chunksReceived.clear(); }
+                
+                // Crash-Schutz vor falschen Offsets
+                if (offset + payload.length <= DISP_BYTES) {
+                    dispBuffer.set(payload, offset);
+                    chunksReceived.add(chunkIdx);
+                    if (chunksReceived.size === chunkTotal) { 
+                        renderOledCanvas(dispBuffer); 
+                        chunksReceived.clear(); 
+                    }
+                }
             });
         }
-        // --- SICHERHEITSNETZ ENDE ---
 
-        // Sensor-Datenstrom verarbeiten (original)
         let datenPuffer = ""; 
         characteristic.addEventListener('characteristicvaluechanged', (event) => {
             let decoder = new TextDecoder('utf-8');
@@ -411,16 +406,12 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         document.getElementById('connectBtn').style.background = "#e74c3c";
         document.getElementById('downloadBtn').disabled = false;
 
-        // Remote Panel nur einblenden, wenn mindestens eins der neuen Features existiert
         if (encoderGefunden || displayGefunden) {
             document.getElementById('remotePanel').style.display = 'block';
-        } else {
-            alert("ℹ️ Verbunden!\n\nSensordaten & Live-Karte laufen einwandfrei.\nDie Encoder-Fernsteuerung wurde ausgeblendet, da die Logger-Firmware diese Kanäle noch nicht anbietet.");
         }
 
     } catch (error) { 
         handleDisconnect(); 
-        console.error("BLE-Fehler:", error);
         alert("Verbindung fehlgeschlagen!\n\nDetails: " + error.name + " -> " + error.message); 
     }
 });
