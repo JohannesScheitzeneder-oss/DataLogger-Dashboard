@@ -87,7 +87,7 @@ header {
 /* ─── Main Layout ────────────────────────────────────────────────────────── */
 main { max-width: 1100px; margin: 0 auto; padding: 24px; }
 
-/* ─── Control Panel ────────────────────────────────────────────────Control */
+/* ─── Control Panel ──────────────────────────────────────────────────────── */
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -99,7 +99,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px; }
   font-size: 11px; font-weight: 600; text-transform: uppercase;
   letter-spacing: 1px; color: var(--muted); margin-bottom: 14px;
 }
-.btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .btn {
   display: inline-flex; align-items: center; gap: 7px;
   padding: 9px 18px; border-radius: 7px; border: none;
@@ -108,7 +108,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px; }
   white-space: nowrap;
 }
 .btn:active:not(:disabled) { transform: scale(.97); }
-.btn:disabled { opacity: .35; cursor: not-allowed; }
+.btn:disabled, .btn.disabled { opacity: .35; cursor: not-allowed; pointer-events: none; }
 .btn-blue   { background: var(--accent);  color: #000; }
 .btn-green  { background: var(--accent2); color: #000; }
 .btn-orange { background: #f0883e;        color: #000; }
@@ -381,6 +381,7 @@ let mapPolyline  = null;
 let gpsPts       = [];
 let firstLat     = null, firstLon = null;
 let dataPuffer   = '';
+let isCsvMode    = false; // Flag zur Unterscheidung von Live- und CSV-Modus
 
 // OLED state
 const DISP_BYTES       = 1024;
@@ -432,24 +433,39 @@ function updateStatus(ble, gps, batt) {
   }
 }
 
-// ─── Encoder-Befehle senden ───────────────────────────────────────────────
+// ─── Encoder-Befehle senden (Überarbeitete Version) ────────────────────────
 async function sendeBefehl(cmd) {
-  if (!rxEncChar) { log('Nicht verbunden – kein Encoder-Befehl gesendet', 'warn'); return; }
+  if (!rxEncChar) { 
+    log('Nicht verbunden oder Button-Kanal (6E400002) nicht aktiv.', 'warn'); 
+    alert('⚠️ Fehler: Der Button-Kanal wurde nicht initialisiert oder fehlt!');
+    return; 
+  }
+  
+  const encData = new TextEncoder().encode(cmd);
+  
   try {
-    const enc = new TextEncoder();
-    await rxEncChar.writeValueWithoutResponse(enc.encode(cmd));
+    // 1. Versuch: Mit Response (Standard für BLE-Profile)
+    await rxEncChar.writeValueWithResponse(encData);
     document.getElementById('lastCmd').textContent = `Letzter Befehl: ${cmd} (${new Date().toLocaleTimeString('de-DE')})`;
-    log(`Encoder-Befehl gesendet: "${cmd}"`, 'info');
+    log(`Encoder-Befehl gesendet (WithResponse): "${cmd}"`, 'info');
   } catch(e) {
-    log(`Encoder-Sende-Fehler: ${e.message}`, 'err');
+    // 2. Versuch (Fallback): Ohne Response versuchen, falls der Arduino es so erwartet
+    try {
+      await rxEncChar.writeValueWithoutResponse(encData);
+      document.getElementById('lastCmd').textContent = `Letzter Befehl: ${cmd} (${new Date().toLocaleTimeString('de-DE')})`;
+      log(`Encoder-Befehl gesendet (Fallback WithoutResponse): "${cmd}"`, 'info');
+    } catch(e2) {
+      log(`Encoder-Sende-Fehler: ${e2.message}`, 'err');
+      alert(`Funkfehler beim Senden des Buttons: ${e2.message}`);
+    }
   }
 }
 
 // Tastatur-Support
 document.addEventListener('keydown', (e) => {
   if (!rxEncChar) return;
-  const map = { ArrowLeft:'L', ArrowRight:'R', Enter:'C', ' ':'X' };
-  if (map[e.key]) { e.preventDefault(); sendeBefehl(map[e.key]); }
+  const keyMap = { ArrowLeft:'L', ArrowRight:'R', Enter:'C', ' ':'X' };
+  if (keyMap[e.key]) { e.preventDefault(); sendeBefehl(keyMap[e.key]); }
 });
 
 // ─── OLED-Chunks verarbeiten ──────────────────────────────────────────────
@@ -467,7 +483,6 @@ function handleDisplayChunk(data) {
     renderOled();
     document.getElementById('oledInfo').textContent =
       `Frame ${new Date().toLocaleTimeString('de-DE')} · ${CHUNK_TOTAL} Chunks`;
-    // Chunk-Indikatoren nach kurzer Zeit zurücksetzen
     setTimeout(() => {
       for (let i=0;i<CHUNK_TOTAL;i++)
         document.getElementById(`cs${i}`)?.classList.remove('rx');
@@ -488,7 +503,6 @@ function renderOled() {
       const row = page * 8 + bit;
       const on  = (byte >> bit) & 1;
       const idx = (row * 128 + col) * 4;
-      // Blaues OLED-Erscheinungsbild
       img.data[idx]   = on ? 100 : 0;
       img.data[idx+1] = on ? 180 : 0;
       img.data[idx+2] = on ? 255 : 5;
@@ -526,7 +540,7 @@ function verarbeiteZeile(zeile) {
   const ts   = fmtTs(parts[0]);
   const sats = parseInt(parts[11]) || 0;
   const batt = parseFloat(parts[14]);
-  updateStatus('connected', sats, isNaN(batt) ? undefined : batt);
+  updateStatus(bleDevice ? 'connected' : 'disconnected', sats, isNaN(batt) ? undefined : batt);
 
   // GPS
   const lat = parseFloat(parts[7]);
@@ -561,7 +575,7 @@ function verarbeiteZeile(zeile) {
     ch.data.labels.push(ts);
     ch.data.datasets[0].data.push(val);
 
-    // Live: max 60 Punkte rollen
+    // Live-Modus: max 60 Punkte rollen
     if (bleDevice && ch.data.labels.length > 60) {
       ch.data.labels.shift();
       ch.data.datasets[0].data.shift();
@@ -582,6 +596,10 @@ function createChart(name) {
   const card = document.createElement('div');
   card.id = `card-${name}`;
   card.className = 'chart-card';
+  
+  // Optischer Check: Wenn CSV-Modus aktiv ist, blenden wir die Pause-Buttons direkt aus
+  const pauseStyle = isCsvMode ? 'display: none;' : '';
+
   card.innerHTML = `
     <div class="chart-header">
       <div>
@@ -590,13 +608,15 @@ function createChart(name) {
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="chart-value" id="val-${name}">–</div>
-        <button class="freeze-btn" id="freeze-${name}" onclick="toggleFreeze('${name}')">⏸ Pause</button>
+        <button class="freeze-btn" id="freeze-${name}" style="${pauseStyle}" onclick="toggleFreeze('${name}')">⏸ Pause</button>
       </div>
     </div>
     <canvas id="chart-${name}"></canvas>`;
   document.getElementById('chartsContainer').appendChild(card);
 
-  const ctx = document.getElementById(`chart-${name}`).getContext('2d');
+  const canvasElement = document.getElementById(`chart-${name}`);
+  const ctx = canvasElement.getContext('2d');
+  
   charts[name] = new Chart(ctx, {
     type: 'line',
     data: {
@@ -630,6 +650,14 @@ function createChart(name) {
           zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
         }
       }
+    }
+  });
+
+  // REPARATUR: Doppelklick-Eventlistener auf dem Canvas registrieren, um Zoom zurückzusetzen
+  canvasElement.addEventListener('dblclick', () => {
+    if (charts[name]) {
+      charts[name].resetZoom();
+      log(`Zoom zurückgesetzt für: ${meta.label}`, 'muted');
     }
   });
 }
@@ -675,6 +703,8 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     const service = await bleServer.getPrimaryService(UUID_SVC);
     log('NUS-Service gefunden.', 'info');
 
+    isCsvMode = false; // Wir sind definitiv im Live-Modus
+
     // ── TX CSV (6E400003) ─────────────────────────────────────────────────
     const csvChar = await service.getCharacteristic(UUID_TX_CSV);
     await csvChar.startNotifications();
@@ -711,20 +741,25 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
       log(`Display-Characteristic nicht gefunden: ${e3.message}`, 'warn');
     }
 
-    // UI-Zustand
+    // UI-Zustand wechseln
     const btn = document.getElementById('connectBtn');
     btn.textContent = '❌ Verbindung trennen';
     btn.className   = 'btn btn-red';
     document.getElementById('downloadBtn').disabled = false;
+    
+    // OPTIMIERUNG: CSV Upload im Live-Modus strikt blockieren!
     document.getElementById('uploadLabel').classList.add('disabled');
     document.getElementById('csvFileInput').disabled = true;
+    
     updateStatus('connected');
 
   } catch(err) {
-    if (err.name !== 'NotFoundError')
+    if (err.name !== 'NotFoundError') {
       log(`Verbindungsfehler: ${err.message}`, 'err');
-    else
+      alert(`Verbindung fehlgeschlagen!\n\nDetails: ${err.name} -> ${err.message}`);
+    } else {
       log('Gerät-Auswahl abgebrochen.', 'muted');
+    }
     handleDisconnect();
   }
 });
@@ -738,8 +773,11 @@ function handleDisconnect() {
   btn.textContent = '🔗 Logger verbinden';
   btn.className   = 'btn btn-blue';
   btn.disabled    = false;
+  
+  // Nach Disconnect CSV-Interaktionen wieder erlauben
   document.getElementById('csvFileInput').disabled = false;
   document.getElementById('uploadLabel').classList.remove('disabled');
+  
   ['encL','encC','encR','encX'].forEach(id =>
     document.getElementById(id).disabled = true);
   updateStatus('disconnected');
@@ -787,6 +825,9 @@ document.getElementById('csvFileInput').addEventListener('change', function() {
     }
 
     resetDashboard();
+    
+    // OPTIMIERUNG: Setze den Modus auf CSV, damit neu generierte Charts keinen Pause-Button bekommen
+    isCsvMode = true; 
 
     zeilen.forEach(z => verarbeiteZeile(z));
     Object.values(charts).forEach(c => c.update());
@@ -827,6 +868,7 @@ function resetDashboard() {
   charts = {}; frozenCharts.clear(); activeSensors.clear();
   csvStore  = ['timestamp,' + SENSOR_NAMES.join(',')];
   pktCount  = 0;
+  isCsvMode = false; // Zurücksetzen auf Standard
   document.getElementById('lblPkts').textContent = 'Pakete: 0';
   if (map) { map.remove(); map = null; }
   gpsPts = []; firstLat = null; firstLon = null;
@@ -835,6 +877,7 @@ function resetDashboard() {
   document.getElementById('mapToggleBtn').disabled     = true;
   document.getElementById('downloadBtn').disabled      = true;
   document.getElementById('chartsSection').style.display = 'none';
+  
   // OLED
   const ctx = document.getElementById('oledCanvas').getContext('2d');
   ctx.clearRect(0,0,128,64);
