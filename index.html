@@ -1,496 +1,852 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🛰️ DataLogger Live-Dashboard & Map</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f5f7fb;
-            color: #333;
-            margin: 0;
-            padding: 20px;
-        }
-        #container {
-            max-width: 1000px;
-            margin: 0 auto;
-            text-align: center;
-        }
-        h1 {
-            color: #2c3e50;
-            margin-bottom: 25px;
-            font-weight: 700;
-        }
-        .control-panel {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            margin-bottom: 30px;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            align-items: center;
-        }
-        button, .file-upload-btn {
-            box-sizing: border-box;
-            width: 100%;
-            padding: 14px 20px;
-            font-size: 15px;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.25s ease;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            text-decoration: none;
-        }
-        #connectBtn { background-color: #3498db; color: white; }
-        #connectBtn:hover:not(:disabled) { background-color: #2980b9; transform: translateY(-1px); }
-        
-        .file-upload-btn { background-color: #2ecc71; color: white; margin: 0; }
-        .file-upload-btn:hover:not(.disabled) { background-color: #27ae60; transform: translateY(-1px); }
-        
-        #downloadBtn { background-color: #e67e22; color: white; }
-        #downloadBtn:hover:not(:disabled) { background-color: #d35400; transform: translateY(-1px); }
-        
-        #mapToggleBtn { background-color: #9b59b6; color: white; }
-        #mapToggleBtn:hover:not(:disabled) { background-color: #8e44ad; transform: translateY(-1px); }
- 
-        button:disabled, .file-upload-btn.disabled {
-            background-color: #e0e4e8 !important;
-            color: #8a94a0 !important;
-            cursor: not-allowed !important;
-            transform: none !important;
-            box-shadow: none !important;
-        }
-        #csvFileInput { display: none; }
- 
-        #mapContainer {
-            display: none;
-            background: white;
-            margin: 20px auto;
-            padding: 15px;
-            width: 100%;
-            box-sizing: border-box;
-            border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            text-align: left;
-        }
-        #map { width: 100%; height: 480px; border-radius: 6px; margin-top: 10px; }
-        
-        .zoom-hint {
-            font-size: 12px;
-            color: #7f8c8d;
-            margin-top: -5px;
-            margin-bottom: 10px;
-            padding-left: 10px;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataLogger Dashboard</title>
 
-        #remotePanel button:hover {
-            filter: brightness(1.15);
-            transform: translateY(-1px);
-            transition: all 0.1s;
-        }
-        #remotePanel button:active {
-            transform: translateY(0px);
-            filter: brightness(0.9);
-        }
-    </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<link  rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+/* ─── Tokens ─────────────────────────────────────────────────────────────── */
+:root {
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface2:  #21262d;
+  --border:    #30363d;
+  --accent:    #58a6ff;
+  --accent2:   #3fb950;
+  --warn:      #d29922;
+  --danger:    #f85149;
+  --text:      #e6edf3;
+  --muted:     #7d8590;
+  --radius:    10px;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+/* ─── Reset & Base ───────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scrollbar-color: var(--border) var(--bg); }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 0 0 60px;
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────────── */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  position: sticky; top: 0; z-index: 100;
+}
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 700; font-size: 17px; letter-spacing: -.3px;
+}
+.logo-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent2);
+  box-shadow: 0 0 8px var(--accent2);
+  animation: pulse 2s infinite;
+}
+.logo-dot.disconnected { background: var(--muted); box-shadow: none; animation: none; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
+
+/* ─── Status Bar ─────────────────────────────────────────────────────────── */
+#statusBar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 24px;
+  display: flex; gap: 24px; flex-wrap: wrap;
+  font-size: 12px; font-family: var(--font-mono);
+}
+.stat-pill {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 4px 12px;
+}
+.stat-pill .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--muted);
+}
+.stat-pill .dot.ok   { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+.stat-pill .dot.warn { background: var(--warn); }
+.stat-pill .dot.bad  { background: var(--danger); }
+
+/* ─── Main Layout ────────────────────────────────────────────────────────── */
+main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+/* ─── Control Panel ────────────────────────────────────────────────Control */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.panel-title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--muted); margin-bottom: 14px;
+}
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 18px; border-radius: 7px; border: none;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: filter .15s, transform .1s;
+  white-space: nowrap;
+}
+.btn:active:not(:disabled) { transform: scale(.97); }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+.btn-blue   { background: var(--accent);  color: #000; }
+.btn-green  { background: var(--accent2); color: #000; }
+.btn-orange { background: #f0883e;        color: #000; }
+.btn-purple { background: #bc8cff;        color: #000; }
+.btn-red    { background: var(--danger);  color: #fff; }
+.btn-ghost  {
+  background: transparent; color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn:hover:not(:disabled) { filter: brightness(1.15); }
+
+/* ─── Encoder Controls ───────────────────────────────────────────────────── */
+.enc-grid {
+  display: grid;
+  grid-template-columns: auto auto auto auto;
+  gap: 8px; align-items: center;
+}
+.enc-btn {
+  width: 44px; height: 44px; border-radius: 8px; border: none;
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); font-size: 18px; cursor: pointer;
+  transition: background .15s, transform .1s;
+  display: flex; align-items: center; justify-content: center;
+}
+.enc-btn:hover:not(:disabled) { background: var(--border); }
+.enc-btn:active:not(:disabled) { transform: scale(.92); background: var(--accent); color: #000; }
+.enc-btn:disabled { opacity: .3; cursor: not-allowed; }
+.enc-label {
+  font-size: 10px; color: var(--muted); font-family: var(--font-mono);
+  text-align: center;
+}
+
+/* ─── Two-column Grid ────────────────────────────────────────────────────── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+@media(max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+/* ─── OLED Mirror ────────────────────────────────────────────────────────── */
+.oled-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 10px;
+}
+#oledCanvas {
+  width: 256px; height: 128px;
+  image-rendering: pixelated;
+  border: 2px solid #58a6ff44;
+  border-radius: 6px;
+  background: #000;
+  box-shadow: 0 0 20px #58a6ff22;
+}
+.oled-info {
+  font-size: 11px; color: var(--muted); font-family: var(--font-mono);
+  text-align: center;
+}
+#chunkBar {
+  display: flex; gap: 3px;
+}
+.chunk-seg {
+  width: 18px; height: 6px; border-radius: 2px;
+  background: var(--border); transition: background .2s;
+}
+.chunk-seg.rx { background: var(--accent); }
+
+/* ─── Map ────────────────────────────────────────────────────────────────── */
+#map { width: 100%; height: 400px; border-radius: 8px; }
+
+/* ─── Charts ─────────────────────────────────────────────────────────────── */
+.chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 16px 10px;
+  margin-bottom: 18px;
+}
+.chart-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 4px;
+}
+.chart-title {
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .8px;
+}
+.chart-value {
+  font-family: var(--font-mono); font-size: 20px; font-weight: 700;
+  color: var(--text); min-width: 90px; text-align: right;
+}
+.chart-hint {
+  font-size: 10px; color: var(--muted); margin-bottom: 8px;
+}
+.freeze-btn {
+  font-size: 10px; padding: 2px 8px; border-radius: 4px;
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--muted); cursor: pointer;
+}
+.freeze-btn.frozen { background: var(--warn); border-color: var(--warn); color: #000; }
+
+/* ─── Log Console ────────────────────────────────────────────────────────── */
+#logBox {
+  background: #000; border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 14px;
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.7;
+  height: 160px; overflow-y: auto;
+  color: #7ee787;
+}
+#logBox .log-err  { color: var(--danger); }
+#logBox .log-warn { color: var(--warn); }
+#logBox .log-info { color: var(--accent); }
+#logBox .log-muted{ color: var(--muted); }
+
+/* ─── File upload hidden ─────────────────────────────────────────────────── */
+#csvFileInput { display: none; }
+
+/* ─── Section headings ───────────────────────────────────────────────────── */
+.section-title {
+  font-size: 13px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--muted);
+  padding: 6px 0 12px; border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+</style>
 </head>
 <body>
- 
-<div id="container">
-    <h1>🛰️ DataLogger Live-Dashboard</h1>
-    
-    <div class="control-panel">
-        <button id="connectBtn">🔗 Logger verbinden</button>
-        <label for="csvFileInput" id="uploadLabel" class="file-upload-btn">📂 CSV hochladen</label>
-        <input type="file" id="csvFileInput" accept=".csv" onchange="importiereCSV(this)">
-        <button id="mapToggleBtn" onclick="toggleMapView()" disabled>🗺️ Route anzeigen</button>
-        <button id="downloadBtn" onclick="downloadCSV()" disabled>💾 CSV speichern</button>
-    </div>
- 
-    <div id="mapContainer">
-        <h3 style="margin-top:0; color:#2c3e50; padding-left:10px;">🗺️ GPS-Routenverfolgung (OpenStreetMap)</h3>
-        <div id="map"></div>
-    </div>
 
-    <div id="remotePanel" style="
-        display:none;
-        background:white;
-        margin:20px auto;
-        padding:15px;
-        max-width:400px;
-        border-radius:10px;
-        box-shadow:0 4px 12px rgba(0,0,0,0.05);
-        text-align:center;">
+<header>
+  <div class="logo">
+    <div class="logo-dot disconnected" id="connDot"></div>
+    DataLogger Dashboard
+  </div>
+  <div style="font-size:12px; color:var(--muted); font-family:var(--font-mono);" id="headerStatus">
+    Nicht verbunden
+  </div>
+</header>
 
-        <h3 style="margin-top:0; color:#2c3e50;">🖥️ Display-Spiegel</h3>
-
-        <canvas id="oledCanvas" width="128" height="64"
-            style="
-                width:384px;
-                height:192px;
-                background:#0a0a0a;
-                border:2px solid #444;
-                border-radius:4px;
-                image-rendering:pixelated;
-                display:block;
-                margin:0 auto 16px;">
-        </canvas>
-
-        <h3 style="margin-top:0; color:#2c3e50;">🎛️ Fernsteuerung</h3>
-
-        <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-            <button onclick="sendEncoderCmd('L')" style="font-size:22px; padding:10px 18px; border-radius:8px; background:#3498db; color:white; border:none; cursor:pointer;">◀</button>
-            <button onclick="sendEncoderCmd('R')" style="font-size:22px; padding:10px 18px; border-radius:8px; background:#3498db; color:white; border:none; cursor:pointer;">▶</button>
-            <button onclick="sendEncoderCmd('C')" style="font-size:18px; padding:10px 18px; border-radius:8px; background:#27ae60; color:white; border:none; cursor:pointer;">✓ Klick</button>
-            <button onclick="sendEncoderCmd('X')" style="font-size:18px; padding:10px 18px; border-radius:8px; background:#e67e22; color:white; border:none; cursor:pointer;">☰ Menü</button>
-        </div>
-
-        <p style="font-size:12px; color:#7f8c8d; margin-top:12px;">
-            ◀ ▶ = Encoder drehen &nbsp;|&nbsp; ✓ = kurzer Klick &nbsp;|&nbsp; ☰ = Menü (2 s drücken)
-        </p>
-    </div>
+<div id="statusBar">
+  <div class="stat-pill">
+    <div class="dot" id="dotBle"></div>
+    <span id="lblBle">BLE: getrennt</span>
+  </div>
+  <div class="stat-pill">
+    <div class="dot" id="dotGps"></div>
+    <span id="lblGps">GPS: –</span>
+  </div>
+  <div class="stat-pill">
+    <div class="dot" id="dotBatt"></div>
+    <span id="lblBatt">Batt: –</span>
+  </div>
+  <div class="stat-pill">
+    <div class="dot ok"></div>
+    <span id="lblPkts">Pakete: 0</span>
+  </div>
 </div>
- 
+
+<main>
+
+  <div class="panel">
+    <div class="panel-title">Verbindung</div>
+    <div class="btn-row">
+      <button class="btn btn-blue"   id="connectBtn">🔗 Logger verbinden</button>
+      <label  class="btn btn-green"  id="uploadLabel" for="csvFileInput">📂 CSV hochladen</label>
+      <input type="file" id="csvFileInput" accept=".csv">
+      <button class="btn btn-purple" id="mapToggleBtn" disabled>🗺️ Route anzeigen</button>
+      <button class="btn btn-orange" id="downloadBtn"  disabled>💾 CSV speichern</button>
+      <button class="btn btn-ghost"  id="resetBtn">🗑 Reset</button>
+    </div>
+  </div>
+
+  <div class="two-col">
+
+    <div class="panel">
+      <div class="panel-title">OLED-Spiegel (128×64)</div>
+      <div class="oled-wrap">
+        <canvas id="oledCanvas" width="128" height="64"></canvas>
+        <div id="chunkBar">
+          <div class="chunk-seg" id="cs0"></div>
+          <div class="chunk-seg" id="cs1"></div>
+          <div class="chunk-seg" id="cs2"></div>
+          <div class="chunk-seg" id="cs3"></div>
+          <div class="chunk-seg" id="cs4"></div>
+          <div class="chunk-seg" id="cs5"></div>
+        </div>
+        <div class="oled-info" id="oledInfo">Warte auf Verbindung…</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Encoder-Steuerung (→ Arduino)</div>
+      <div style="margin-bottom:14px; font-size:12px; color:var(--muted);">
+        Steuert das Menü auf dem Arduino direkt vom Dashboard aus.
+      </div>
+      <div class="enc-grid">
+        <button class="enc-btn" id="encL" disabled title="Links / Runter" onclick="sendeBefehl('L')">◀</button>
+        <button class="enc-btn" id="encC" disabled title="Kurzklick / OK"  onclick="sendeBefehl('C')">⏺</button>
+        <button class="enc-btn" id="encR" disabled title="Rechts / Hoch"   onclick="sendeBefehl('R')">▶</button>
+        <button class="enc-btn" id="encX" disabled title="Longpress / Zurück" onclick="sendeBefehl('X')">⏱</button>
+        <div class="enc-label">Links</div>
+        <div class="enc-label">Klick</div>
+        <div class="enc-label">Rechts</div>
+        <div class="enc-label">Long</div>
+      </div>
+      <div style="margin-top:16px; font-size:11px; color:var(--muted); font-family:var(--font-mono);">
+        Tastatur: ← → Enter Space (wenn verbunden)
+      </div>
+      <div id="lastCmd" style="margin-top:8px; font-size:11px; font-family:var(--font-mono); color:var(--accent);">
+        Letzter Befehl: –
+      </div>
+    </div>
+
+  </div>
+
+  <div id="mapContainer" class="panel" style="display:none;">
+    <div class="panel-title">GPS-Route (OpenStreetMap)</div>
+    <div id="map"></div>
+  </div>
+
+  <div class="section-title" id="chartsSection" style="display:none;">Sensordaten</div>
+  <div id="chartsContainer"></div>
+
+  <div class="panel" style="margin-top:20px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div class="panel-title" style="margin:0;">Konsole</div>
+      <button class="btn btn-ghost" style="padding:4px 10px; font-size:11px;" onclick="clearLog()">Leeren</button>
+    </div>
+    <div id="logBox"></div>
+  </div>
+
+</main>
+
 <script>
+'use strict';
+
+// ─── UUIDs ────────────────────────────────────────────────────────────────
+const UUID_SVC      = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const UUID_TX_CSV   = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';  // Arduino→Web CSV
+const UUID_RX_ENC   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';  // Web→Arduino Encoder
+const UUID_TX_DISP  = '6e400004-b5a3-f393-e0a9-e50e24dcca9e';  // Arduino→Web OLED
+
+// ─── Sensor-Definitionen ──────────────────────────────────────────────────
 const SENSOR_NAMES = [
-    "accelX", "accelY", "accelZ", "temp", "hum", "press", 
-    "lat", "lon", "alt", "speed", "sats", "thermocouple", "soundLevel", "battVoltage"
+  'accelX','accelY','accelZ','temp','hum','press',
+  'lat','lon','alt','speed','sats','thermocouple','soundLevel','battVoltage'
 ];
- 
-const SENSOR_DETAILS = {
-    "accelX": { name: "Beschleunigung X-Achse", einheit: "g" },
-    "accelY": { name: "Beschleunigung Y-Achse", einheit: "g" },
-    "accelZ": { name: "Beschleunigung Z-Achse", einheit: "g" },
-    "temp":   { name: "Temperatur",             einheit: "°C" },
-    "hum":    { name: "Luftfeuchtigkeit",       einheit: "% r.F." },
-    "press":  { name: "Luftdruck",              einheit: "bar" },
-    "lat":    { name: "Geografische Breite",    einheit: "°" },
-    "lon":    { name: "Geografische Länge",     einheit: "°" },
-    "alt":    { name: "Höhe über Meer",         einheit: "m" },
-    "speed":  { name: "Geschwindigkeit",        einheit: "km/h" },
-    "sats":   { name: "Satelliten",             einheit: "Anzahl" },
-    "thermocouple": { name: "Externe Temp",     einheit: "°C" },
-    "soundLevel":   { name: "Schallpegel",      einheit: "dB" },
-    "battVoltage":  { name: "Batteriespannung",  einheit: "V" }
+const SENSOR_META = {
+  accelX:       { label:'Beschleunigung X', unit:'g',     color:'#58a6ff' },
+  accelY:       { label:'Beschleunigung Y', unit:'g',     color:'#79c0ff' },
+  accelZ:       { label:'Beschleunigung Z', unit:'g',     color:'#388bfd' },
+  temp:         { label:'Temperatur',       unit:'°C',    color:'#f0883e' },
+  hum:          { label:'Luftfeuchtigkeit', unit:'% r.F.',color:'#56d364' },
+  press:        { label:'Luftdruck',        unit:'bar',   color:'#bc8cff' },
+  lat:          { label:'Breitengrad',      unit:'°',     color:'#ffa657' },
+  lon:          { label:'Längengrad',       unit:'°',     color:'#ffa657' },
+  alt:          { label:'Höhe ü.M.',        unit:'m',     color:'#d2a8ff' },
+  speed:        { label:'Geschwindigkeit',  unit:'km/h',  color:'#ff7b72' },
+  sats:         { label:'Satelliten',       unit:'Anz.',  color:'#ffa657' },
+  thermocouple: { label:'Ext. Temperatur',  unit:'°C',    color:'#ff6e40' },
+  soundLevel:   { label:'Schallpegel',      unit:'dB',    color:'#79c0ff' },
+  battVoltage:  { label:'Batteriespannung', unit:'V',     color:'#3fb950' },
 };
- 
-let charts = {};               
-let activeSensors = new Set(); 
-let csvDatenSpeicher = ["timestamp," + SENSOR_NAMES.join(",")];     
- 
-let bleDevice = null;
-let bleServer = null;
- 
-let map = null;
-let mapMarker = null;
-let mapRoute = null;
-let gpsPunkte = []; 
-let ersterEchterLat = null;
-let ersterEchterLon = null;
- 
-function formatiereZeitstempel(rawTimestamp) {
-    try {
-        if (rawTimestamp.includes('T') && rawTimestamp.includes('Z')) {
-            let [datum, zeit] = rawTimestamp.replace('Z', '').split('T');
-            let zeitTeile = zeit.split(':');
-            if (zeitTeile.length === 3) {
-                rawTimestamp = `${datum}T${zeitTeile[0].padStart(2, '0')}:${zeitTeile[1].padStart(2, '0')}:${zeitTeile[2].padStart(2, '0')}Z`; 
-            }
-        }
-        const date = new Date(rawTimestamp);
-        if (isNaN(date.getTime())) return rawTimestamp; 
-        return date.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    } catch(e) { return rawTimestamp; }
+
+// ─── State ────────────────────────────────────────────────────────────────
+let bleDevice    = null;
+let bleServer    = null;
+let rxEncChar    = null;
+let charts       = {};
+let frozenCharts = new Set();
+let activeSensors= new Set();
+let csvStore     = ['timestamp,' + SENSOR_NAMES.join(',')];
+let pktCount     = 0;
+let map          = null;
+let mapMarker    = null;
+let mapPolyline  = null;
+let gpsPts       = [];
+let firstLat     = null, firstLon = null;
+let dataPuffer   = '';
+
+// OLED state
+const DISP_BYTES       = 1024;
+const CHUNK_DATA_SIZE  = 200;
+const CHUNK_TOTAL      = Math.ceil(DISP_BYTES / CHUNK_DATA_SIZE); // 6
+const displayBuffer    = new Uint8Array(DISP_BYTES);
+let   chunksReceived   = 0;
+
+// ─── Log ──────────────────────────────────────────────────────────────────
+function log(msg, type='') {
+  const box = document.getElementById('logBox');
+  const ts  = new Date().toLocaleTimeString('de-DE');
+  const el  = document.createElement('div');
+  if (type) el.className = `log-${type}`;
+  el.textContent = `[${ts}] ${msg}`;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
 }
- 
-function toggleMapView() {
-    const container = document.getElementById('mapContainer');
-    const btn = document.getElementById('mapToggleBtn');
-    if (container.style.display === "none" || container.style.display === "") {
-        container.style.display = "block";
-        btn.innerText = "🗺️ Route ausblenden";
-        if (!map && ersterEchterLat && ersterEchterLon) {
-            map = L.map('map').setView([ersterEchterLat, ersterEchterLon], 16);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
-            mapMarker = L.marker([ersterEchterLat, ersterEchterLon]).addTo(map);
-            mapRoute = L.polyline(gpsPunkte, { color: '#2ecc71', weight: 5 }).addTo(map);
-            if (gpsPunkte.length > 1) map.fitBounds(mapRoute.getBounds());
-        } else if (map) { map.invalidateSize(); }
-    } else {
-        container.style.display = "none";
-        btn.innerText = "🗺️ Route anzeigen";
-    }
+function clearLog() { document.getElementById('logBox').innerHTML = ''; }
+
+// ─── Status Bar aktualisieren ─────────────────────────────────────────────
+function updateStatus(ble, gps, batt) {
+  // BLE
+  const dotBle = document.getElementById('dotBle');
+  const lblBle = document.getElementById('lblBle');
+  if (ble === 'connected') {
+    dotBle.className='dot ok'; lblBle.textContent='BLE: verbunden';
+    document.getElementById('connDot').className='logo-dot';
+    document.getElementById('headerStatus').textContent='Verbunden';
+  } else {
+    dotBle.className='dot'; lblBle.textContent='BLE: getrennt';
+    document.getElementById('connDot').className='logo-dot disconnected';
+    document.getElementById('headerStatus').textContent='Nicht verbunden';
+  }
+  // GPS
+  if (gps !== undefined) {
+    const dotGps = document.getElementById('dotGps');
+    const lblGps = document.getElementById('lblGps');
+    if (gps > 0) { dotGps.className='dot ok'; lblGps.textContent=`GPS: ${gps} Sats`; }
+    else         { dotGps.className='dot warn'; lblGps.textContent='GPS: kein Fix'; }
+  }
+  // Batt
+  if (batt !== undefined) {
+    const dotBatt = document.getElementById('dotBatt');
+    const lblBatt = document.getElementById('lblBatt');
+    if (batt >= 3.8)      { dotBatt.className='dot ok';   lblBatt.textContent=`Batt: ${batt.toFixed(2)} V`; }
+    else if (batt >= 3.5) { dotBatt.className='dot warn'; lblBatt.textContent=`Batt: ${batt.toFixed(2)} V ⚠️`; }
+    else                  { dotBatt.className='dot bad';  lblBatt.textContent=`Batt: ${batt.toFixed(2)} V 🪫`; }
+  }
 }
- 
-function createChartOnDemand(sensorName) {
-    if (document.getElementById(`container-${sensorName}`)) return; 
-    let info = SENSOR_DETAILS[sensorName] || { name: sensorName, einheit: "" };
-    
-    let card = document.createElement('div');
-    card.id = `container-${sensorName}`;
-    card.style = "background: white; margin: 20px auto; padding: 15px; width: 100%; box-sizing: border-box; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); text-align: left;";
-    card.innerHTML = `<h3 style="margin-top:0; color:#2c3e50; padding-left:10px; margin-bottom:5px;">📊 ${info.name} [${info.einheit}]</h3><div class="zoom-hint">🔍 Mausrad zum Zoomen / Ziehen zum Verschieben</div><canvas id="chart-${sensorName}"></canvas>`;
-    document.getElementById('container').appendChild(card); 
- 
-    let farbe = '#' + Math.floor(Math.random()*16777215).toString(16);
-    let ctx = document.getElementById(`chart-${sensorName}`).getContext('2d');
- 
-    charts[sensorName] = new Chart(ctx, {
-        type: 'line',
-        data: { labels: [], datasets: [{ label: info.name, data: [], borderColor: farbe, backgroundColor: farbe + "1A", borderWidth: 2, fill: true, pointRadius: 1, tension: 0.1 }] },
-        options: { 
-            responsive: true, 
-            scales: { 
-                x: { title: { display: true, text: 'Zeitstempel' }, ticks: { maxTicksLimit: 5 } }, 
-                y: { title: { display: true, text: info.einheit }, beginAtZero: false } 
-            },
-            plugins: { zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } }
-        }
-    });
+
+// ─── Encoder-Befehle senden ───────────────────────────────────────────────
+async function sendeBefehl(cmd) {
+  if (!rxEncChar) { log('Nicht verbunden – kein Encoder-Befehl gesendet', 'warn'); return; }
+  try {
+    const enc = new TextEncoder();
+    await rxEncChar.writeValueWithoutResponse(enc.encode(cmd));
+    document.getElementById('lastCmd').textContent = `Letzter Befehl: ${cmd} (${new Date().toLocaleTimeString('de-DE')})`;
+    log(`Encoder-Befehl gesendet: "${cmd}"`, 'info');
+  } catch(e) {
+    log(`Encoder-Sende-Fehler: ${e.message}`, 'err');
+  }
 }
- 
-function verarbeiteZeile(zeile) {
-    let bereinigteZeile = zeile.trim();
-    if (bereinigteZeile.length === 0 || bereinigteZeile.startsWith("timestamp")) return;
-    csvDatenSpeicher.push(bereinigteZeile);
-    let parts = bereinigteZeile.split(',');
-    
-    if(parts.length >= 15) { 
-        let rawTimestamp = parts[0]; 
-        let formatierterZeitstempel = formatiereZeitstempel(rawTimestamp); 
-        let aktuelleLat = parseFloat(parts[7]);
-        let aktuelleLon = parseFloat(parts[8]);
- 
-        if (aktuelleLat !== 0.0 && aktuelleLon !== 0.0 && !isNaN(aktuelleLat) && !isNaN(aktuelleLon)) {
-            if (ersterEchterLat === null) { ersterEchterLat = aktuelleLat; ersterEchterLon = aktuelleLon; }
-            let neuePosition = [aktuelleLat, aktuelleLon];
-            gpsPunkte.push(neuePosition);
-            document.getElementById('mapToggleBtn').disabled = false;
-            if (map) {
-                mapMarker.setLatLng(neuePosition);
-                mapRoute.setLatLngs(gpsPunkte);
-                if (bleDevice) map.setView(neuePosition);
-            }
-        }
-        
-        for(let i = 0; i < SENSOR_NAMES.length; i++) {
-            let sensorName = SENSOR_NAMES[i];
-            let wert = parseFloat(parts[i + 1]); 
-            if (!isNaN(wert)) {
-                if (!activeSensors.has(sensorName)) { activeSensors.add(sensorName); createChartOnDemand(sensorName); }
-            }
-            if (charts[sensorName]) {
-                charts[sensorName].data.labels.push(formatierterZeitstempel); 
-                charts[sensorName].data.datasets[0].data.push(wert);
-                if (bleDevice && charts[sensorName].data.labels.length > 50) {
-                    charts[sensorName].data.labels.shift();
-                    charts[sensorName].data.datasets[0].data.shift();
-                }
-                charts[sensorName].update('none');
-            }
-        }
-    }
-}
- 
-function setUploadButtonState(disabled) {
-    const fileInput = document.getElementById('csvFileInput');
-    const label = document.getElementById('uploadLabel');
-    fileInput.disabled = disabled;
-    if (disabled) label.classList.add('disabled'); else label.classList.remove('disabled');
-}
- 
-function handleDisconnect() {
-    const btn = document.getElementById('connectBtn');
-    btn.innerText = "🔗 Logger verbinden"; btn.style.background = "#3498db"; btn.disabled = false;
-    bleDevice = null; bleServer = null;
-    setUploadButtonState(false);
-    document.getElementById('remotePanel').style.display = 'none';
-    window._rxEncoderChar = null;
-}
- 
-document.getElementById('connectBtn').addEventListener('click', async () => {
-    if (bleDevice && bleDevice.gatt.connected) { bleDevice.gatt.disconnect(); return; }
-    try {
-        bleDevice = await navigator.bluetooth.requestDevice({ 
-            acceptAllDevices: true, 
-            optionalServices: [
-                '6e400001-b5a3-f393-e0a9-e50e24dcca9e',   
-                '6e400004-b5a3-f393-e0a9-e50e24dcca9e'    
-            ] 
-        });
-        bleDevice.addEventListener('gattserverdisconnected', handleDisconnect);
-        document.getElementById('connectBtn').innerText = "Verbinde...";
-        bleServer = await bleDevice.gatt.connect();
-        setUploadButtonState(true);
- 
-        const service = await bleServer.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
-        
-        const characteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
-        await characteristic.startNotifications();
-        
-        let encoderGefunden = false;
-        let displayGefunden = false;
 
-        try {
-            const rxEncoderChar = await service.getCharacteristic('6e400002-b5a3-f393-e0a9-e50e24dcca9e');
-            window._rxEncoderChar = rxEncoderChar; 
-            encoderGefunden = true;
-        } catch (e) { console.warn("Encoder nicht gefunden:", e); }
-
-        let txDispChar = null;
-        try {
-            txDispChar = await service.getCharacteristic('6e400004-b5a3-f393-e0a9-e50e24dcca9e');
-            displayGefunden = true;
-        } catch (e) {
-            try {
-                const dispService = await bleServer.getPrimaryService('6e400004-b5a3-f393-e0a9-e50e24dcca9e');
-                txDispChar = await dispService.getCharacteristic('6e400004-b5a3-f393-e0a9-e50e24dcca9e');
-                displayGefunden = true;
-            } catch (e2) { console.warn("Display nicht gefunden:", e2); }
-        }
-
-        if (txDispChar) {
-            await txDispChar.startNotifications();
-            const DISP_BYTES = 1024;
-            // KORREKTUR: Auf 16 Bytes angepasst, passend zum Standard-Bluetooth-Limit!
-            const CHUNK_DATA = 16; 
-            let dispBuffer = new Uint8Array(DISP_BYTES);
-            let chunksReceived = new Set();
-
-            txDispChar.addEventListener('characteristicvaluechanged', (event) => {
-                const data  = new Uint8Array(event.target.value.buffer);
-                const chunkIdx   = data[0];
-                const chunkTotal = data[1];
-                const payload    = data.slice(2);
-                const offset = chunkIdx * CHUNK_DATA;
-                
-                // Crash-Schutz vor falschen Offsets
-                if (offset + payload.length <= DISP_BYTES) {
-                    dispBuffer.set(payload, offset);
-                    chunksReceived.add(chunkIdx);
-                    if (chunksReceived.size === chunkTotal) { 
-                        renderOledCanvas(dispBuffer); 
-                        chunksReceived.clear(); 
-                    }
-                }
-            });
-        }
-
-        let datenPuffer = ""; 
-        characteristic.addEventListener('characteristicvaluechanged', (event) => {
-            let decoder = new TextDecoder('utf-8');
-            datenPuffer += decoder.decode(event.target.value);
-            if (datenPuffer.includes('\n')) {
-                let zeilen = datenPuffer.split('\n'); datenPuffer = zeilen.pop(); 
-                zeilen.forEach(zeile => { verarbeiteZeile(zeile); });
-            }
-        });
-        
-        document.getElementById('connectBtn').innerText = "❌ Verbindung trennen";
-        document.getElementById('connectBtn').style.background = "#e74c3c";
-        document.getElementById('downloadBtn').disabled = false;
-
-        if (encoderGefunden || displayGefunden) {
-            document.getElementById('remotePanel').style.display = 'block';
-        }
-
-    } catch (error) { 
-        handleDisconnect(); 
-        alert("Verbindung fehlgeschlagen!\n\nDetails: " + error.name + " -> " + error.message); 
-    }
+// Tastatur-Support
+document.addEventListener('keydown', (e) => {
+  if (!rxEncChar) return;
+  const map = { ArrowLeft:'L', ArrowRight:'R', Enter:'C', ' ':'X' };
+  if (map[e.key]) { e.preventDefault(); sendeBefehl(map[e.key]); }
 });
 
-function renderOledCanvas(buffer) {
-    const canvas = document.getElementById('oledCanvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const img = ctx.createImageData(128, 64);
-    for (let page = 0; page < 8; page++) {
-        for (let col = 0; col < 128; col++) {
-            const byte = buffer[page * 128 + col];
-            for (let bit = 0; bit < 8; bit++) {
-                const row = page * 8 + bit;
-                const on = (byte >> bit) & 1;
-                const i = (row * 128 + col) * 4;
-                const bright = on ? 255 : 15;
-                img.data[i] = bright; img.data[i + 1] = bright; img.data[i + 2] = bright; img.data[i + 3] = 255;
-            }
-        }
-    }
-    ctx.putImageData(img, 0, 0);
+// ─── OLED-Chunks verarbeiten ──────────────────────────────────────────────
+function handleDisplayChunk(data) {
+  const chunkIndex = data[0];
+  const chunkTotal = data[1];
+  const payload    = data.slice(2);
+  const offset     = chunkIndex * CHUNK_DATA_SIZE;
+
+  displayBuffer.set(payload, offset);
+  document.getElementById(`cs${chunkIndex}`)?.classList.add('rx');
+  chunksReceived++;
+
+  if (chunkIndex === chunkTotal - 1) {
+    renderOled();
+    document.getElementById('oledInfo').textContent =
+      `Frame ${new Date().toLocaleTimeString('de-DE')} · ${CHUNK_TOTAL} Chunks`;
+    // Chunk-Indikatoren nach kurzer Zeit zurücksetzen
+    setTimeout(() => {
+      for (let i=0;i<CHUNK_TOTAL;i++)
+        document.getElementById(`cs${i}`)?.classList.remove('rx');
+    }, 300);
+  }
 }
 
-async function sendEncoderCmd(cmd) {
-    if (!window._rxEncoderChar) {
-        alert("⚠️ Fehler: Der Button-Kanal wurde beim Verbinden nicht gefunden! Schau in die F12-Konsole.");
-        return;
+function renderOled() {
+  const canvas = document.getElementById('oledCanvas');
+  const ctx    = canvas.getContext('2d');
+  const img    = ctx.createImageData(128, 64);
+
+  for (let i = 0; i < DISP_BYTES; i++) {
+    const col  = i % 128;
+    const page = Math.floor(i / 128);
+    const byte = displayBuffer[i];
+    for (let bit = 0; bit < 8; bit++) {
+      const row = page * 8 + bit;
+      const on  = (byte >> bit) & 1;
+      const idx = (row * 128 + col) * 4;
+      // Blaues OLED-Erscheinungsbild
+      img.data[idx]   = on ? 100 : 0;
+      img.data[idx+1] = on ? 180 : 0;
+      img.data[idx+2] = on ? 255 : 5;
+      img.data[idx+3] = 255;
     }
-    try { 
-        // 1. Versuch: Mit Bestätigung (Standard für BLEWrite)
-        await window._rxEncoderChar.writeValueWithResponse(new TextEncoder().encode(cmd)); 
-        console.log("Erfolgreich gesendet:", cmd);
-    } catch(e) { 
-        // 2. Versuch (Fallback): Ohne Bestätigung
-        try {
-            await window._rxEncoderChar.writeValueWithoutResponse(new TextEncoder().encode(cmd));
-            console.log("Erfolgreich gesendet (Fallback):", cmd);
-        } catch(e2) {
-            console.error('BLE Schreibfehler:', e2);
-            alert("Funkfehler beim Senden: " + e2.message);
-        }
-    }
-}
- 
-function importiereCSV(input) {
-    const file = input.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const text = e.target.result; const zeilen = text.split('\n');
-        if (zeilen.length < 2) { alert("❌ Fehler: Datei leer!"); input.value = ""; return; }
-        let kopfzeile = zeilen[0].trim().toLowerCase();
-        if (!kopfzeile.startsWith("timestamp") || !kopfzeile.includes("accelx")) { alert("❌ Ungültiges Format!"); input.value = ""; return; }
-        
-        document.getElementById('container').querySelectorAll('[id^="container-"]').forEach(el => el.remove());
-        charts = {}; activeSensors.clear();
-        csvDatenSpeicher = ["timestamp," + SENSOR_NAMES.join(",")];
-        if(map) { map.remove(); map = null; }
-        gpsPunkte = []; ersterEchterLat = null; ersterEchterLon = null;
-        document.getElementById('mapContainer').style.display = "none";
-        document.getElementById('mapToggleBtn').disabled = true;
- 
-        zeilen.forEach(zeile => { verarbeiteZeile(zeile); });
-        Object.keys(charts).forEach(key => charts[key].update());
-        document.getElementById('downloadBtn').disabled = false;
-        const connBtn = document.getElementById('connectBtn');
-        connBtn.disabled = true; connBtn.style.background = "#bdc3c7"; connBtn.innerText = "🔒 Kopplung gesperrt";
-    };
-    reader.readAsText(file);
+  }
+  ctx.putImageData(img, 0, 0);
 }
 
-function downloadCSV() {
-    if(csvDatenSpeicher.length <= 1) return;
-    let csvContent = "data:text/csv;charset=utf-8," + csvDatenSpeicher.join("\n");
-    let encodedUri = encodeURI(csvContent);
-    let link = document.createElement("a");
-    link.setAttribute("href", encodedUri); link.setAttribute("download", "datalogger_export.csv");
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+// ─── CSV-Zeile verarbeiten ────────────────────────────────────────────────
+function fmtTs(raw) {
+  try {
+    if (raw.includes('T') && raw.includes('Z')) {
+      const [d,t] = raw.replace('Z','').split('T');
+      const p = t.split(':').map(x=>x.padStart(2,'0'));
+      raw = `${d}T${p.join(':')}Z`;
+    }
+    const dt = new Date(raw);
+    if (isNaN(dt)) return raw;
+    return dt.toLocaleTimeString('de-DE');
+  } catch { return raw; }
+}
+
+function verarbeiteZeile(zeile) {
+  zeile = zeile.trim();
+  if (!zeile || zeile.startsWith('timestamp')) return;
+
+  csvStore.push(zeile);
+  pktCount++;
+  document.getElementById('lblPkts').textContent = `Pakete: ${pktCount}`;
+
+  const parts = zeile.split(',');
+  if (parts.length < 15) return;
+
+  const ts   = fmtTs(parts[0]);
+  const sats = parseInt(parts[11]) || 0;
+  const batt = parseFloat(parts[14]);
+  updateStatus('connected', sats, isNaN(batt) ? undefined : batt);
+
+  // GPS
+  const lat = parseFloat(parts[7]);
+  const lon = parseFloat(parts[8]);
+  if (lat !== 0 && lon !== 0 && !isNaN(lat) && !isNaN(lon)) {
+    if (firstLat === null) { firstLat = lat; firstLon = lon; }
+    const pt = [lat, lon];
+    gpsPts.push(pt);
+    document.getElementById('mapToggleBtn').disabled = false;
+    if (map) {
+      mapMarker.setLatLng(pt);
+      mapPolyline.setLatLngs(gpsPts);
+      if (bleDevice) map.panTo(pt);
+    }
+  }
+
+  // Charts
+  document.getElementById('chartsSection').style.display = '';
+  for (let i = 0; i < SENSOR_NAMES.length; i++) {
+    const name = SENSOR_NAMES[i];
+    const val  = parseFloat(parts[i + 1]);
+    if (isNaN(val)) continue;
+
+    if (!activeSensors.has(name)) {
+      activeSensors.add(name);
+      createChart(name);
+    }
+
+    const ch = charts[name];
+    if (!ch || frozenCharts.has(name)) continue;
+
+    ch.data.labels.push(ts);
+    ch.data.datasets[0].data.push(val);
+
+    // Live: max 60 Punkte rollen
+    if (bleDevice && ch.data.labels.length > 60) {
+      ch.data.labels.shift();
+      ch.data.datasets[0].data.shift();
+    }
+    // Letzter Wert im Header
+    const valEl = document.getElementById(`val-${name}`);
+    if (valEl) valEl.textContent = `${val.toFixed(2)} ${SENSOR_META[name]?.unit||''}`;
+
+    ch.update('none');
+  }
+}
+
+// ─── Chart erstellen ──────────────────────────────────────────────────────
+function createChart(name) {
+  if (document.getElementById(`card-${name}`)) return;
+  const meta = SENSOR_META[name] || { label: name, unit: '', color: '#888' };
+
+  const card = document.createElement('div');
+  card.id = `card-${name}`;
+  card.className = 'chart-card';
+  card.innerHTML = `
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">${meta.label}</div>
+        <div class="chart-hint">Mausrad = Zoom · Ziehen = Pan · Doppelklick = Reset</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="chart-value" id="val-${name}">–</div>
+        <button class="freeze-btn" id="freeze-${name}" onclick="toggleFreeze('${name}')">⏸ Pause</button>
+      </div>
+    </div>
+    <canvas id="chart-${name}"></canvas>`;
+  document.getElementById('chartsContainer').appendChild(card);
+
+  const ctx = document.getElementById(`chart-${name}`).getContext('2d');
+  charts[name] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: meta.label,
+        data: [],
+        borderColor: meta.color,
+        backgroundColor: meta.color + '22',
+        borderWidth: 2, fill: true, pointRadius: 1, tension: 0.2,
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      scales: {
+        x: {
+          ticks: { color:'#7d8590', maxTicksLimit: 6 },
+          grid:  { color:'#21262d' },
+        },
+        y: {
+          ticks: { color:'#7d8590' },
+          grid:  { color:'#21262d' },
+          title: { display: true, text: meta.unit, color:'#7d8590' },
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        zoom: {
+          pan:  { enabled: true, mode: 'x' },
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+        }
+      }
+    }
+  });
+}
+
+function toggleFreeze(name) {
+  const btn = document.getElementById(`freeze-${name}`);
+  if (frozenCharts.has(name)) {
+    frozenCharts.delete(name);
+    btn.className = 'freeze-btn';
+    btn.textContent = '⏸ Pause';
+  } else {
+    frozenCharts.add(name);
+    btn.className = 'freeze-btn frozen';
+    btn.textContent = '▶ Live';
+  }
+}
+
+// ─── BLE verbinden ────────────────────────────────────────────────────────
+document.getElementById('connectBtn').addEventListener('click', async () => {
+  if (bleDevice && bleDevice.gatt.connected) {
+    bleDevice.gatt.disconnect();
+    return;
+  }
+
+  if (!navigator.bluetooth) {
+    log('Web Bluetooth wird von diesem Browser nicht unterstützt!', 'err');
+    alert('Web Bluetooth wird hier nicht unterstützt.\nNutze Chrome oder Edge auf Desktop/Android.');
+    return;
+  }
+
+  try {
+    log('Suche nach BLE-Gerät "DataLogger"…', 'info');
+    bleDevice = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [UUID_SVC]
+    });
+    bleDevice.addEventListener('gattserverdisconnected', handleDisconnect);
+    document.getElementById('connectBtn').textContent = 'Verbinde…';
+
+    bleServer = await bleDevice.gatt.connect();
+    log(`Verbunden mit: ${bleDevice.name || bleDevice.id}`, 'info');
+
+    const service = await bleServer.getPrimaryService(UUID_SVC);
+    log('NUS-Service gefunden.', 'info');
+
+    // ── TX CSV (6E400003) ─────────────────────────────────────────────────
+    const csvChar = await service.getCharacteristic(UUID_TX_CSV);
+    await csvChar.startNotifications();
+    csvChar.addEventListener('characteristicvaluechanged', (e) => {
+      dataPuffer += new TextDecoder().decode(e.target.value);
+      if (dataPuffer.includes('\n')) {
+        const zeilen = dataPuffer.split('\n');
+        dataPuffer   = zeilen.pop();
+        zeilen.forEach(z => verarbeiteZeile(z));
+      }
+    });
+    log('CSV-Characteristic abonniert (6E400003).', 'info');
+
+    // ── RX Encoder (6E400002) ─────────────────────────────────────────────
+    try {
+      rxEncChar = await service.getCharacteristic(UUID_RX_ENC);
+      ['encL','encC','encR','encX'].forEach(id =>
+        document.getElementById(id).disabled = false);
+      log('Encoder-Characteristic bereit (6E400002).', 'info');
+    } catch(e2) {
+      log(`Encoder-Characteristic nicht gefunden: ${e2.message}`, 'warn');
+    }
+
+    // ── TX Display (6E400004) ─────────────────────────────────────────────
+    try {
+      const dispChar = await service.getCharacteristic(UUID_TX_DISP);
+      await dispChar.startNotifications();
+      dispChar.addEventListener('characteristicvaluechanged', (e) => {
+        handleDisplayChunk(new Uint8Array(e.target.value.buffer));
+      });
+      document.getElementById('oledInfo').textContent = 'Warte auf ersten Frame…';
+      log('Display-Characteristic abonniert (6E400004).', 'info');
+    } catch(e3) {
+      log(`Display-Characteristic nicht gefunden: ${e3.message}`, 'warn');
+    }
+
+    // UI-Zustand
+    const btn = document.getElementById('connectBtn');
+    btn.textContent = '❌ Verbindung trennen';
+    btn.className   = 'btn btn-red';
+    document.getElementById('downloadBtn').disabled = false;
+    document.getElementById('uploadLabel').classList.add('disabled');
+    document.getElementById('csvFileInput').disabled = true;
+    updateStatus('connected');
+
+  } catch(err) {
+    if (err.name !== 'NotFoundError')
+      log(`Verbindungsfehler: ${err.message}`, 'err');
+    else
+      log('Gerät-Auswahl abgebrochen.', 'muted');
+    handleDisconnect();
+  }
+});
+
+function handleDisconnect() {
+  bleDevice  = null;
+  bleServer  = null;
+  rxEncChar  = null;
+  dataPuffer = '';
+  const btn = document.getElementById('connectBtn');
+  btn.textContent = '🔗 Logger verbinden';
+  btn.className   = 'btn btn-blue';
+  btn.disabled    = false;
+  document.getElementById('csvFileInput').disabled = false;
+  document.getElementById('uploadLabel').classList.remove('disabled');
+  ['encL','encC','encR','encX'].forEach(id =>
+    document.getElementById(id).disabled = true);
+  updateStatus('disconnected');
+  log('BLE-Verbindung getrennt.', 'warn');
+}
+
+// ─── Karte umschalten ─────────────────────────────────────────────────────
+document.getElementById('mapToggleBtn').addEventListener('click', () => {
+  const c = document.getElementById('mapContainer');
+  const b = document.getElementById('mapToggleBtn');
+  const show = c.style.display === 'none' || c.style.display === '';
+  c.style.display = show ? 'block' : 'none';
+  b.textContent = show ? '🗺️ Karte ausblenden' : '🗺️ Route anzeigen';
+
+  if (show && !map && firstLat) {
+    map = L.map('map').setView([firstLat, firstLon], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { attribution: '&copy; OpenStreetMap' }).addTo(map);
+    mapMarker   = L.marker([firstLat, firstLon]).addTo(map);
+    mapPolyline = L.polyline(gpsPts, { color:'#3fb950', weight: 4 }).addTo(map);
+    if (gpsPts.length > 1) map.fitBounds(mapPolyline.getBounds());
+  } else if (map) {
+    map.invalidateSize();
+  }
+});
+
+// ─── CSV importieren ──────────────────────────────────────────────────────
+document.getElementById('csvFileInput').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text  = e.target.result;
+    const zeilen= text.split('\n');
+
+    if (zeilen.length < 2) { alert('❌ Datei leer oder keine Datenzeilen!'); this.value=''; return; }
+    const hdr = zeilen[0].trim().toLowerCase();
+    if (!hdr.startsWith('timestamp') || !hdr.includes('accelx') || !hdr.includes('battvoltage')) {
+      alert('❌ Ungültiges Dateiformat!\nErwartete Spalten nicht gefunden.'); this.value=''; return;
+    }
+    const testParts = zeilen[1].trim().split(',');
+    if (testParts.length < 15) {
+      alert(`❌ Strukturfehler! Nur ${testParts.length} Spalten gefunden (min. 15 erwartet).`);
+      this.value=''; return;
+    }
+
+    resetDashboard();
+
+    zeilen.forEach(z => verarbeiteZeile(z));
+    Object.values(charts).forEach(c => c.update());
+
+    document.getElementById('downloadBtn').disabled = false;
+    document.getElementById('connectBtn').disabled  = true;
+    document.getElementById('connectBtn').textContent = '🔒 Gesperrt (CSV-Modus)';
+    log(`CSV geladen: ${file.name} – ${zeilen.length} Zeilen.`, 'info');
+  };
+  reader.readAsText(file);
+});
+
+// ─── CSV herunterladen ────────────────────────────────────────────────────
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  if (csvStore.length <= 1) return;
+  const blob = new Blob([csvStore.join('\n')], { type:'text/csv' });
+  const a    = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: `datalogger_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`
+  });
+  a.click();
+  log('CSV gespeichert.', 'info');
+});
+
+// ─── Reset ────────────────────────────────────────────────────────────────
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (!confirm('Dashboard zurücksetzen? Alle angezeigten Daten werden gelöscht.')) return;
+  resetDashboard();
+  if (bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+  document.getElementById('connectBtn').disabled  = false;
+  document.getElementById('connectBtn').textContent = '🔗 Logger verbinden';
+  document.getElementById('connectBtn').className = 'btn btn-blue';
+  log('Dashboard zurückgesetzt.', 'muted');
+});
+
+function resetDashboard() {
+  document.querySelectorAll('.chart-card').forEach(el => el.remove());
+  charts = {}; frozenCharts.clear(); activeSensors.clear();
+  csvStore  = ['timestamp,' + SENSOR_NAMES.join(',')];
+  pktCount  = 0;
+  document.getElementById('lblPkts').textContent = 'Pakete: 0';
+  if (map) { map.remove(); map = null; }
+  gpsPts = []; firstLat = null; firstLon = null;
+  document.getElementById('mapContainer').style.display = 'none';
+  document.getElementById('mapToggleBtn').textContent  = '🗺️ Route anzeigen';
+  document.getElementById('mapToggleBtn').disabled     = true;
+  document.getElementById('downloadBtn').disabled      = true;
+  document.getElementById('chartsSection').style.display = 'none';
+  // OLED
+  const ctx = document.getElementById('oledCanvas').getContext('2d');
+  ctx.clearRect(0,0,128,64);
+  displayBuffer.fill(0);
+  document.getElementById('oledInfo').textContent = 'Warte auf Verbindung…';
+  updateStatus('disconnected');
+}
+
+// ─── Init-Log ─────────────────────────────────────────────────────────────
+log('Dashboard bereit.', 'info');
+if (!navigator.bluetooth) {
+  log('⚠ Web Bluetooth nicht verfügbar – nur CSV-Import möglich.', 'warn');
 }
 </script>
 </body>
