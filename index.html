@@ -629,7 +629,7 @@ function createChart(name) {
   
   const pauseStyle = isCsvMode ? 'display: none;' : '';
 
-  card.innerHTML = `
+card.innerHTML = `
     <div class="chart-header">
       <div>
         <div class="chart-title">${meta.label}</div>
@@ -639,6 +639,7 @@ function createChart(name) {
         <div class="chart-hover-value" id="hover-${name}">(Aktuell: –)</div>
         <div class="chart-value" id="val-${name}">–</div>
         <button class="freeze-btn" id="freeze-${name}" style="${pauseStyle}" onclick="toggleFreeze('${name}')">⏸ Pause</button>
+        <button class="freeze-btn" id="toggle-vis-${name}" onclick="toggleVisibility('${name}')" style="font-weight:bold; min-width:24px;">−</button>
       </div>
     </div>
     <canvas id="chart-${name}"></canvas>`;
@@ -730,6 +731,21 @@ function toggleFreeze(name) {
     btn.textContent = '▶ Live';
   }
 }
+function toggleVisibility(name) {
+  const canvas = document.getElementById(`chart-${name}`);
+  const btn = document.getElementById(`toggle-vis-${name}`);
+  
+  if (canvas.style.display === 'none') {
+    canvas.style.display = 'block';
+    btn.textContent = '−';
+    btn.style.color = ''; // Setzt die Farbe auf Standard zurück
+  } else {
+    canvas.style.display = 'none';
+    btn.textContent = '＋';
+    btn.style.color = 'var(--accent)'; // Färbt das "+" leicht blau, damit man sieht, dass es eingeklappt ist
+  }
+}
+  
 
 // ─── BLE verbinden ────────────────────────────────────────────────────────
 document.getElementById('connectBtn').addEventListener('click', async () => {
