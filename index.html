@@ -61,6 +61,7 @@ header {
   animation: pulse 2s infinite;
 }
 .logo-dot.disconnected { background: var(--muted); box-shadow: none; animation: none; }
+.logo-dot.csv-mode { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: none; }
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
 
 /* ─── Status Bar ─────────────────────────────────────────────────────────── */
@@ -236,13 +237,13 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px; }
     <div class="logo-dot disconnected" id="connDot"></div>
     DataLogger Dashboard
   </div>
-  <div style="font-size:12px; color:var(--muted); font-family:var(--font-mono);" id="headerStatus">
+  <div style="font-size:12px; font-family:var(--font-mono); font-weight:600;" id="headerStatus">
     Nicht verbunden
   </div>
 </header>
 
 <div id="statusBar">
-  <div class="stat-pill">
+  <div class="stat-pill" id="pillBleContainer">
     <div class="dot" id="dotBle"></div>
     <span id="lblBle">BLE: getrennt</span>
   </div>
@@ -263,7 +264,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px; }
 <main>
 
   <div class="panel">
-    <div class="panel-title">Verbindung</div>
+    <div class="panel-title">Verbindung & Datei-Import</div>
     <div class="btn-row">
       <button class="btn btn-blue"   id="connectBtn">🔗 Logger verbinden</button>
       <label  class="btn btn-green"  id="uploadLabel" for="csvFileInput">📂 CSV hochladen</label>
@@ -274,7 +275,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px; }
     </div>
   </div>
 
-  <div class="two-col">
+  <div class="two-col" id="liveHardwareContainer">
 
     <div class="panel">
       <div class="panel-title">OLED-Spiegel (128×64)</div>
@@ -340,9 +341,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px; }
 
 // ─── UUIDs ────────────────────────────────────────────────────────────────
 const UUID_SVC      = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const UUID_TX_CSV   = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';  // Arduino→Web CSV
-const UUID_RX_ENC   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';  // Web→Arduino Encoder
-const UUID_TX_DISP  = '6e400004-b5a3-f393-e0a9-e50e24dcca9e';  // Arduino→Web OLED
+const UUID_TX_CSV   = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const UUID_RX_ENC   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const UUID_TX_DISP  = '6e400004-b5a3-f393-e0a9-e50e24dcca9e';
 
 // ─── Sensor-Definitionen ──────────────────────────────────────────────────
 const SENSOR_NAMES = [
@@ -381,12 +382,12 @@ let mapPolyline  = null;
 let gpsPts       = [];
 let firstLat     = null, firstLon = null;
 let dataPuffer   = '';
-let isCsvMode    = false; // Flag zur Unterscheidung von Live- und CSV-Modus
+let isCsvMode    = false;
 
 // OLED state
 const DISP_BYTES       = 1024;
 const CHUNK_DATA_SIZE  = 200;
-const CHUNK_TOTAL      = Math.ceil(DISP_BYTES / CHUNK_DATA_SIZE); // 6
+const CHUNK_TOTAL      = Math.ceil(DISP_BYTES / CHUNK_DATA_SIZE);
 const displayBuffer    = new Uint8Array(DISP_BYTES);
 let   chunksReceived   = 0;
 
@@ -403,19 +404,29 @@ function log(msg, type='') {
 function clearLog() { document.getElementById('logBox').innerHTML = ''; }
 
 // ─── Status Bar aktualisieren ─────────────────────────────────────────────
-function updateStatus(ble, gps, batt) {
-  // BLE
-  const dotBle = document.getElementById('dotBle');
+function updateStatus(mode, gps, batt) {
+  const connDot = document.getElementById('connDot');
+  const headerStatus = document.getElementById('headerStatus');
   const lblBle = document.getElementById('lblBle');
-  if (ble === 'connected') {
-    dotBle.className='dot ok'; lblBle.textContent='BLE: verbunden';
-    document.getElementById('connDot').className='logo-dot';
-    document.getElementById('headerStatus').textContent='Verbunden';
+  const dotBle = document.getElementById('dotBle');
+
+  if (mode === 'connected') {
+    dotBle.className = 'dot ok'; 
+    lblBle.textContent = 'BLE: verbunden';
+    connDot.className = 'logo-dot';
+    headerStatus.textContent = 'Verbunden';
+    headerStatus.style.color = 'var(--accent2)';
+  } else if (mode === 'csv') {
+    // Wenn im CSV-Modus, brauchen wir die BLE-Pille nicht zwingend anzuzeigen
+    connDot.className = 'logo-dot csv-mode';
   } else {
-    dotBle.className='dot'; lblBle.textContent='BLE: getrennt';
-    document.getElementById('connDot').className='logo-dot disconnected';
-    document.getElementById('headerStatus').textContent='Nicht verbunden';
+    dotBle.className = 'dot'; 
+    lblBle.textContent = 'BLE: getrennt';
+    connDot.className = 'logo-dot disconnected';
+    headerStatus.textContent = 'Nicht verbunden';
+    headerStatus.style.color = 'var(--muted)';
   }
+
   // GPS
   if (gps !== undefined) {
     const dotGps = document.getElementById('dotGps');
@@ -433,23 +444,19 @@ function updateStatus(ble, gps, batt) {
   }
 }
 
-// ─── Encoder-Befehle senden (Überarbeitete Version) ────────────────────────
+// ─── Encoder-Befehle senden ───────────────────────────────────────────────
 async function sendeBefehl(cmd) {
   if (!rxEncChar) { 
     log('Nicht verbunden oder Button-Kanal (6E400002) nicht aktiv.', 'warn'); 
     alert('⚠️ Fehler: Der Button-Kanal wurde nicht initialisiert oder fehlt!');
     return; 
   }
-  
   const encData = new TextEncoder().encode(cmd);
-  
   try {
-    // 1. Versuch: Mit Response (Standard für BLE-Profile)
     await rxEncChar.writeValueWithResponse(encData);
     document.getElementById('lastCmd').textContent = `Letzter Befehl: ${cmd} (${new Date().toLocaleTimeString('de-DE')})`;
     log(`Encoder-Befehl gesendet (WithResponse): "${cmd}"`, 'info');
   } catch(e) {
-    // 2. Versuch (Fallback): Ohne Response versuchen, falls der Arduino es so erwartet
     try {
       await rxEncChar.writeValueWithoutResponse(encData);
       document.getElementById('lastCmd').textContent = `Letzter Befehl: ${cmd} (${new Date().toLocaleTimeString('de-DE')})`;
@@ -540,7 +547,7 @@ function verarbeiteZeile(zeile) {
   const ts   = fmtTs(parts[0]);
   const sats = parseInt(parts[11]) || 0;
   const batt = parseFloat(parts[14]);
-  updateStatus(bleDevice ? 'connected' : 'disconnected', sats, isNaN(batt) ? undefined : batt);
+  updateStatus(bleDevice ? 'connected' : (isCsvMode ? 'csv' : 'disconnected'), sats, isNaN(batt) ? undefined : batt);
 
   // GPS
   const lat = parseFloat(parts[7]);
@@ -575,12 +582,10 @@ function verarbeiteZeile(zeile) {
     ch.data.labels.push(ts);
     ch.data.datasets[0].data.push(val);
 
-    // Live-Modus: max 60 Punkte rollen
     if (bleDevice && ch.data.labels.length > 60) {
       ch.data.labels.shift();
       ch.data.datasets[0].data.shift();
     }
-    // Letzter Wert im Header
     const valEl = document.getElementById(`val-${name}`);
     if (valEl) valEl.textContent = `${val.toFixed(2)} ${SENSOR_META[name]?.unit||''}`;
 
@@ -597,7 +602,7 @@ function createChart(name) {
   card.id = `card-${name}`;
   card.className = 'chart-card';
   
-  // Optischer Check: Wenn CSV-Modus aktiv ist, blenden wir die Pause-Buttons direkt aus
+  // Pause-Button ausblenden im CSV-Modus
   const pauseStyle = isCsvMode ? 'display: none;' : '';
 
   card.innerHTML = `
@@ -653,7 +658,6 @@ function createChart(name) {
     }
   });
 
-  // REPARATUR: Doppelklick-Eventlistener auf dem Canvas registrieren, um Zoom zurückzusetzen
   canvasElement.addEventListener('dblclick', () => {
     if (charts[name]) {
       charts[name].resetZoom();
@@ -703,9 +707,11 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     const service = await bleServer.getPrimaryService(UUID_SVC);
     log('NUS-Service gefunden.', 'info');
 
-    isCsvMode = false; // Wir sind definitiv im Live-Modus
+    // Zurück in den Live-Modus schalten
+    isCsvMode = false; 
+    document.getElementById('liveHardwareContainer').style.display = '';
+    document.getElementById('pillBleContainer').style.display = '';
 
-    // ── TX CSV (6E400003) ─────────────────────────────────────────────────
     const csvChar = await service.getCharacteristic(UUID_TX_CSV);
     await csvChar.startNotifications();
     csvChar.addEventListener('characteristicvaluechanged', (e) => {
@@ -718,7 +724,6 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     });
     log('CSV-Characteristic abonniert (6E400003).', 'info');
 
-    // ── RX Encoder (6E400002) ─────────────────────────────────────────────
     try {
       rxEncChar = await service.getCharacteristic(UUID_RX_ENC);
       ['encL','encC','encR','encX'].forEach(id =>
@@ -728,7 +733,6 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
       log(`Encoder-Characteristic nicht gefunden: ${e2.message}`, 'warn');
     }
 
-    // ── TX Display (6E400004) ─────────────────────────────────────────────
     try {
       const dispChar = await service.getCharacteristic(UUID_TX_DISP);
       await dispChar.startNotifications();
@@ -741,13 +745,12 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
       log(`Display-Characteristic nicht gefunden: ${e3.message}`, 'warn');
     }
 
-    // UI-Zustand wechseln
     const btn = document.getElementById('connectBtn');
     btn.textContent = '❌ Verbindung trennen';
     btn.className   = 'btn btn-red';
     document.getElementById('downloadBtn').disabled = false;
     
-    // OPTIMIERUNG: CSV Upload im Live-Modus strikt blockieren!
+    // CSV Upload blockieren
     document.getElementById('uploadLabel').classList.add('disabled');
     document.getElementById('csvFileInput').disabled = true;
     
@@ -774,7 +777,6 @@ function handleDisconnect() {
   btn.className   = 'btn btn-blue';
   btn.disabled    = false;
   
-  // Nach Disconnect CSV-Interaktionen wieder erlauben
   document.getElementById('csvFileInput').disabled = false;
   document.getElementById('uploadLabel').classList.remove('disabled');
   
@@ -808,26 +810,48 @@ document.getElementById('mapToggleBtn').addEventListener('click', () => {
 document.getElementById('csvFileInput').addEventListener('change', function() {
   const file = this.files[0];
   if (!file) return;
+  
+  const headerStatus = document.getElementById('headerStatus');
   const reader = new FileReader();
+  
   reader.onload = (e) => {
     const text  = e.target.result;
     const zeilen= text.split('\n');
 
-    if (zeilen.length < 2) { alert('❌ Datei leer oder keine Datenzeilen!'); this.value=''; return; }
+    if (zeilen.length < 2) { 
+      alert('❌ Datei leer oder keine Datenzeilen!'); 
+      headerStatus.textContent = '❌ Upload fehlgeschlagen (Datei leer)';
+      headerStatus.style.color = 'var(--danger)';
+      this.value = ''; 
+      return; 
+    }
     const hdr = zeilen[0].trim().toLowerCase();
     if (!hdr.startsWith('timestamp') || !hdr.includes('accelx') || !hdr.includes('battvoltage')) {
-      alert('❌ Ungültiges Dateiformat!\nErwartete Spalten nicht gefunden.'); this.value=''; return;
+      alert('❌ Ungültiges Dateiformat!\nErwartete Spalten nicht gefunden.'); 
+      headerStatus.textContent = '❌ Upload fehlgeschlagen (Formatfehler)';
+      headerStatus.style.color = 'var(--danger)';
+      this.value = ''; 
+      return;
     }
     const testParts = zeilen[1].trim().split(',');
     if (testParts.length < 15) {
       alert(`❌ Strukturfehler! Nur ${testParts.length} Spalten gefunden (min. 15 erwartet).`);
-      this.value=''; return;
+      headerStatus.textContent = '❌ Upload fehlgeschlagen (Strukturfehler)';
+      headerStatus.style.color = 'var(--danger)';
+      this.value = ''; 
+      return;
     }
 
     resetDashboard();
     
-    // OPTIMIERUNG: Setze den Modus auf CSV, damit neu generierte Charts keinen Pause-Button bekommen
+    // CSV-Modus aktivieren & Live-Hardware ausblenden
     isCsvMode = true; 
+    document.getElementById('liveHardwareContainer').style.display = 'none';
+    document.getElementById('pillBleContainer').style.display = 'none';
+
+    // ERFOLGS-STATUS IM HEADER ANZEIGEN:
+    headerStatus.textContent = `📄 ${file.name} erfolgreich geladen`;
+    headerStatus.style.color = 'var(--accent2)';
 
     zeilen.forEach(z => verarbeiteZeile(z));
     Object.values(charts).forEach(c => c.update());
@@ -868,7 +892,12 @@ function resetDashboard() {
   charts = {}; frozenCharts.clear(); activeSensors.clear();
   csvStore  = ['timestamp,' + SENSOR_NAMES.join(',')];
   pktCount  = 0;
-  isCsvMode = false; // Zurücksetzen auf Standard
+  isCsvMode = false; 
+  
+  // Hardware-Spiegel und BLE-Status wieder einblenden
+  document.getElementById('liveHardwareContainer').style.display = '';
+  document.getElementById('pillBleContainer').style.display = '';
+
   document.getElementById('lblPkts').textContent = 'Pakete: 0';
   if (map) { map.remove(); map = null; }
   gpsPts = []; firstLat = null; firstLon = null;
