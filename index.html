@@ -82,6 +82,7 @@ header {
   background: var(--muted);
 }
 .stat-pill .dot.ok   { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+.stat-pill .dot.csv  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
 .stat-pill .dot.warn { background: var(--warn); }
 .stat-pill .dot.bad  { background: var(--danger); }
 
@@ -225,7 +226,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px; }
 #logBox .log-info { color: var(--accent); }
 #logBox .log-muted{ color: var(--muted); }
 
-/* ─── File upload hidden ─────────────────────────────────────────────────── */
+/* ─── File upload styling ────────────────────────────────────────────────── */
 #csvFileInput { display: none; }
 
 /* ─── Section headings ───────────────────────────────────────────────────── */
@@ -254,16 +255,16 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px; }
     <div class="dot" id="dotBle"></div>
     <span id="lblBle">BLE: getrennt</span>
   </div>
-  <div class="stat-pill">
+  <div class="stat-pill" id="pillGpsContainer">
     <div class="dot" id="dotGps"></div>
     <span id="lblGps">GPS: –</span>
   </div>
-  <div class="stat-pill">
+  <div class="stat-pill" id="pillBattContainer">
     <div class="dot" id="dotBatt"></div>
     <span id="lblBatt">Batt: –</span>
   </div>
-  <div class="stat-pill">
-    <div class="dot ok"></div>
+  <div class="stat-pill" id="pillPktsContainer">
+    <div class="dot ok" id="dotPkts"></div>
     <span id="lblPkts">Pakete: 0</span>
   </div>
 </div>
@@ -277,60 +278,58 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px; }
       <label  class="btn btn-green"  id="uploadLabel" for="csvFileInput">📂 CSV hochladen</label>
       <input type="file" id="csvFileInput" accept=".csv">
       <button class="btn btn-purple" id="mapToggleBtn" disabled>🗺️ Route anzeigen</button>
-      <button class="btn btn-orange" id="downloadBtn"  disabled>💾 CSV保存</button>
+      <button class="btn btn-orange" id="downloadBtn"  disabled>💾 CSV speichern</button>
       <button class="btn btn-ghost"  id="resetBtn">🗑 Reset</button>
     </div>
   </div>
 
-  <div id="liveHardwareContainer">
-    <div class="two-col">
-      <div class="panel">
-        <div class="panel-title">OLED-Spiegel (128×64)</div>
-        <div class="oled-wrap">
-          <canvas id="oledCanvas" width="128" height="64"></canvas>
-          <div id="chunkBar">
-            <div class="chunk-seg" id="cs0"></div>
-            <div class="chunk-seg" id="cs1"></div>
-            <div class="chunk-seg" id="cs2"></div>
-            <div class="chunk-seg" id="cs3"></div>
-            <div class="chunk-seg" id="cs4"></div>
-            <div class="chunk-seg" id="cs5"></div>
-          </div>
-          <div class="oled-info" id="oledInfo">Warte auf Verbindung…</div>
+  <div id="liveHardwareContainer" class="two-col">
+    <div class="panel">
+      <div class="panel-title">OLED-Spiegel (128×64)</div>
+      <div class="oled-wrap">
+        <canvas id="oledCanvas" width="128" height="64"></canvas>
+        <div id="chunkBar">
+          <div class="chunk-seg" id="cs0"></div>
+          <div class="chunk-seg" id="cs1"></div>
+          <div class="chunk-seg" id="cs2"></div>
+          <div class="chunk-seg" id="cs3"></div>
+          <div class="chunk-seg" id="cs4"></div>
+          <div class="chunk-seg" id="cs5"></div>
         </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-title">Encoder-Steuerung (→ Arduino)</div>
-        <div style="margin-bottom:14px; font-size:12px; color:var(--muted);">
-          Steuert das Menü auf dem Arduino direkt vom Dashboard aus.
-        </div>
-        <div class="enc-grid">
-          <button class="enc-btn" id="encL" disabled title="Links / Runter" onclick="sendeBefehl('L')">◀</button>
-          <button class="enc-btn" id="encC" disabled title="Kurzklick / OK"  onclick="sendeBefehl('C')">⏺</button>
-          <button class="enc-btn" id="encR" disabled title="Rechts / Hoch"   onclick="sendeBefehl('R')">▶</button>
-          <button class="enc-btn" id="encX" disabled title="Longpress / Zurück" onclick="sendeBefehl('X')">⏱</button>
-          <div class="enc-label">Links</div>
-          <div class="enc-label">Klick</div>
-          <div class="enc-label">Rechts</div>
-          <div class="enc-label">Long</div>
-        </div>
-        <div style="margin-top:16px; font-size:11px; color:var(--muted); font-family:var(--font-mono);">
-          Tastatur: ← → Enter Space (wenn verbunden)
-        </div>
-        <div id="lastCmd" style="margin-top:8px; font-size:11px; font-family:var(--font-mono); color:var(--accent);">
-          Letzter Befehl: –
-        </div>
+        <div class="oled-info" id="oledInfo">Warte auf Verbindung…</div>
       </div>
     </div>
 
-    <div class="panel" style="margin-bottom:20px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <div class="panel-title" style="margin:0;">Konsole</div>
-        <button class="btn btn-ghost" style="padding:4px 10px; font-size:11px;" onclick="clearLog()">Leeren</button>
+    <div class="panel">
+      <div class="panel-title">Encoder-Steuerung (→ Arduino)</div>
+      <div style="margin-bottom:14px; font-size:12px; color:var(--muted);">
+        Steuert das Menü auf dem Arduino direkt vom Dashboard aus.
       </div>
-      <div id="logBox"></div>
+      <div class="enc-grid">
+        <button class="enc-btn" id="encL" disabled title="Links / Runter" onclick="sendeBefehl('L')">◀</button>
+        <button class="enc-btn" id="encC" disabled title="Kurzklick / OK"  onclick="sendeBefehl('C')">⏺</button>
+        <button class="enc-btn" id="encR" disabled title="Rechts / Hoch"   onclick="sendeBefehl('R')">▶</button>
+        <button class="enc-btn" id="encX" disabled title="Longpress / Zurück" onclick="sendeBefehl('X')">⏱</button>
+        <div class="enc-label">Links</div>
+        <div class="enc-label">Klick</div>
+        <div class="enc-label">Rechts</div>
+        <div class="enc-label">Long</div>
+      </div>
+      <div style="margin-top:16px; font-size:11px; color:var(--muted); font-family:var(--font-mono);">
+        Tastatur: ← → Enter Space (wenn verbunden)
+      </div>
+      <div id="lastCmd" style="margin-top:8px; font-size:11px; font-family:var(--font-mono); color:var(--accent);">
+        Letzter Befehl: –
+      </div>
     </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:20px;" id="consolePanel">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div class="panel-title" style="margin:0;">Konsole</div>
+      <button class="btn btn-ghost" style="padding:4px 10px; font-size:11px;" onclick="clearLog()">Leeren</button>
+    </div>
+    <div id="logBox"></div>
   </div>
 
   <div id="mapContainer" class="panel" style="display:none;">
@@ -417,6 +416,8 @@ function updateStatus(mode, gps, batt) {
   const headerStatus = document.getElementById('headerStatus');
   const lblBle = document.getElementById('lblBle');
   const dotBle = document.getElementById('dotBle');
+  const lblPkts = document.getElementById('lblPkts');
+  const dotPkts = document.getElementById('dotPkts');
 
   if (mode === 'connected') {
     dotBle.className = 'dot ok'; 
@@ -424,23 +425,45 @@ function updateStatus(mode, gps, batt) {
     connDot.className = 'logo-dot';
     headerStatus.textContent = 'Verbunden';
     headerStatus.style.color = 'var(--accent2)';
+    
+    // Live-Modus: Pillen anzeigen & Text auf Pakete normieren
+    document.getElementById('pillBleContainer').style.display = '';
+    document.getElementById('pillGpsContainer').style.display = '';
+    document.getElementById('pillBattContainer').style.display = '';
+    dotPkts.className = 'dot ok';
+    lblPkts.textContent = `Pakete: ${pktCount}`;
   } else if (mode === 'csv') {
     connDot.className = 'logo-dot csv-mode';
+    
+    // CSV Modus: Unnötige Pillen ausblenden
+    document.getElementById('pillBleContainer').style.display = 'none';
+    document.getElementById('pillGpsContainer').style.display = 'none';
+    document.getElementById('pillBattContainer').style.display = 'none';
+    
+    // Paket-Pille auf Datenzeilen umschreiben und blau färben
+    dotPkts.className = 'dot csv';
+    lblPkts.textContent = `Datensätze: ${pktCount}`;
   } else {
     dotBle.className = 'dot'; 
     lblBle.textContent = 'BLE: getrennt';
     connDot.className = 'logo-dot disconnected';
     headerStatus.textContent = 'Nicht verbunden';
     headerStatus.style.color = 'var(--muted)';
+    
+    document.getElementById('pillBleContainer').style.display = '';
+    document.getElementById('pillGpsContainer').style.display = '';
+    document.getElementById('pillBattContainer').style.display = '';
+    dotPkts.className = 'dot ok';
+    lblPkts.textContent = `Pakete: ${pktCount}`;
   }
 
-  if (gps !== undefined) {
+  if (gps !== undefined && mode !== 'csv') {
     const dotGps = document.getElementById('dotGps');
     const lblGps = document.getElementById('lblGps');
     if (gps > 0) { dotGps.className='dot ok'; lblGps.textContent=`GPS: ${gps} Sats`; }
     else         { dotGps.className='dot warn'; lblGps.textContent='GPS: kein Fix'; }
   }
-  if (batt !== undefined) {
+  if (batt !== undefined && mode !== 'csv') {
     const dotBatt = document.getElementById('dotBatt');
     const lblBatt = document.getElementById('lblBatt');
     if (batt >= 3.8)      { dotBatt.className='dot ok';   lblBatt.textContent=`Batt: ${batt.toFixed(2)} V`; }
@@ -453,19 +476,17 @@ function updateStatus(mode, gps, batt) {
 async function sendeBefehl(cmd) {
   if (!rxEncChar) { 
     log('Nicht verbunden oder Button-Kanal (6E400002) nicht aktiv.', 'warn'); 
-    alert('⚠️ Fehler: Der Button-Kanal wurde nicht initialisiert oder fehlt!');
     return; 
   }
   const encData = new TextEncoder().encode(cmd);
   try {
     await rxEncChar.writeValueWithResponse(encData);
     document.getElementById('lastCmd').textContent = `Letzter Befehl: ${cmd} (${new Date().toLocaleTimeString('de-DE')})`;
-    log(`Encoder-Befehl gesendet (WithResponse): "${cmd}"`, 'info');
+    log(`Encoder-Befehl gesendet: "${cmd}"`, 'info');
   } catch(e) {
     try {
       await rxEncChar.writeValueWithoutResponse(encData);
       document.getElementById('lastCmd').textContent = `Letzter Befehl: ${cmd} (${new Date().toLocaleTimeString('de-DE')})`;
-      log(`Encoder-Befehl gesendet (Fallback WithoutResponse): "${cmd}"`, 'info');
     } catch(e2) {
       log(`Encoder-Sende-Fehler: ${e2.message}`, 'err');
     }
@@ -542,7 +563,9 @@ function verarbeiteZeile(zeile) {
 
   csvStore.push(zeile);
   pktCount++;
-  document.getElementById('lblPkts').textContent = `Pakete: ${pktCount}`;
+  
+  // Dynamische Benennung je nach Modus via updateStatus()
+  updateStatus(bleDevice ? 'connected' : (isCsvMode ? 'csv' : 'disconnected'));
 
   const parts = zeile.split(',');
   if (parts.length < 15) return;
@@ -640,7 +663,6 @@ function createChart(name) {
     options: {
       responsive: true,
       animation: false,
-      // NEU: Plugin-Optionen für Interaktion abfangen (Mausbewegung)
       interaction: {
         mode: 'index',
         intersect: false
@@ -682,7 +704,6 @@ function createChart(name) {
     }
   });
 
-  // Maus verlässt das Canvas komplett -> Reset des Texts
   canvasElement.addEventListener('mouseleave', () => {
     const hoverEl = document.getElementById(`hover-${name}`);
     if (hoverEl) {
@@ -694,13 +715,12 @@ function createChart(name) {
   canvasElement.addEventListener('dblclick', () => {
     if (charts[name]) {
       charts[name].resetZoom();
-      log(`Zoom zurückgesetzt für: ${meta.label}`, 'muted');
     }
   });
 }
 
 function toggleFreeze(name) {
-  const btn = document.getElementById(`freeze-${name}`);
+  const btn = document.getElementById('freeze-' + name);
   if (frozenCharts.has(name)) {
     frozenCharts.delete(name);
     btn.className = 'freeze-btn';
@@ -721,7 +741,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
 
   if (!navigator.bluetooth) {
     log('Web Bluetooth wird von diesem Browser nicht unterstützt!', 'err');
-    alert('Web Bluetooth wird hier nicht unterstützt.\nNutze Chrome oder Edge.');
+    alert('Web Bluetooth wird hier nicht unterstützt.');
     return;
   }
 
@@ -738,11 +758,9 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     log(`Verbunden mit: ${bleDevice.name || bleDevice.id}`, 'info');
 
     const service = await bleServer.getPrimaryService(UUID_SVC);
-    log('NUS-Service gefunden.', 'info');
 
     isCsvMode = false; 
     document.getElementById('liveHardwareContainer').style.display = '';
-    document.getElementById('pillBleContainer').style.display = '';
 
     const csvChar = await service.getCharacteristic(UUID_TX_CSV);
     await csvChar.startNotifications();
@@ -774,7 +792,10 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     btn.className   = 'btn btn-red';
     document.getElementById('downloadBtn').disabled = false;
     
-    document.getElementById('uploadLabel').classList.add('disabled');
+    // NEU: Upload-Label im Live-Modus sperren und Text anpassen
+    const upLabel = document.getElementById('uploadLabel');
+    upLabel.classList.add('disabled');
+    upLabel.textContent = '🔒 Gesperrt (Live-Modus)';
     document.getElementById('csvFileInput').disabled = true;
     
     updateStatus('connected');
@@ -798,7 +819,9 @@ function handleDisconnect() {
   btn.disabled    = false;
   
   document.getElementById('csvFileInput').disabled = false;
-  document.getElementById('uploadLabel').classList.remove('disabled');
+  const upLabel = document.getElementById('uploadLabel');
+  upLabel.classList.remove('disabled');
+  upLabel.textContent = '📂 CSV hochladen';
   
   ['encL','encC','encR','encX'].forEach(id =>
     document.getElementById(id).disabled = true);
@@ -840,6 +863,7 @@ document.getElementById('csvFileInput').addEventListener('change', function() {
     if (zeilen.length < 2) { 
       headerStatus.textContent = '❌ Upload fehlgeschlagen (Datei leer)';
       headerStatus.style.color = 'var(--danger)';
+      log('CSV-Upload fehlgeschlagen: Datei leer.', 'err');
       this.value = ''; 
       return; 
     }
@@ -847,17 +871,16 @@ document.getElementById('csvFileInput').addEventListener('change', function() {
     if (!hdr.startsWith('timestamp') || !hdr.includes('accelx') || !hdr.includes('battvoltage')) {
       headerStatus.textContent = '❌ Upload fehlgeschlagen (Formatfehler)';
       headerStatus.style.color = 'var(--danger)';
+      log('CSV-Upload fehlgeschlagen: Falsche Header-Struktur.', 'err');
       this.value = ''; 
       return;
     }
 
-    // Altdaten entfernen
     resetDashboardDataOnly();
     
-    // In reinen CSV-Modus wechseln & Live-Elemente (inkl. Konsole) ausblenden
+    // In reinen CSV-Modus wechseln & Live-Spiegel ausblenden (Konsole bleibt da)
     isCsvMode = true; 
     document.getElementById('liveHardwareContainer').style.display = 'none';
-    document.getElementById('pillBleContainer').style.display = 'none';
 
     headerStatus.textContent = `📄 ${file.name} erfolgreich geladen`;
     headerStatus.style.color = 'var(--accent2)';
@@ -868,6 +891,7 @@ document.getElementById('csvFileInput').addEventListener('change', function() {
     document.getElementById('downloadBtn').disabled = false;
     document.getElementById('connectBtn').disabled  = true;
     document.getElementById('connectBtn').textContent = '🔒 Gesperrt (CSV-Modus)';
+    log(`CSV-Datei erfolgreich importiert: ${file.name} (${pktCount} Zeilen verarbeitet).`, 'info');
   };
   reader.readAsText(file);
 });
@@ -881,13 +905,13 @@ document.getElementById('downloadBtn').addEventListener('click', () => {
     download: `datalogger_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`
   });
   a.click();
+  log('Aktuelle Tabellendaten als neue CSV gespeichert.', 'info');
 });
 
-// ─── Reset (Jetzt so zuverlässig wie ein Seiten-Reload!) ────────────────────
+// ─── Reset (Vollständiger Clean-State) ────────────────────────────────────
 document.getElementById('resetBtn').addEventListener('click', () => {
   if (!confirm('Dashboard komplett zurücksetzen? Alle Daten und Verbindungen werden gelöscht.')) return;
   
-  // 1. BLE-Hardware explizit trennen und Variablen nullen
   if (bleDevice && bleDevice.gatt.connected) {
     bleDevice.gatt.disconnect();
   }
@@ -896,39 +920,34 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   rxEncChar  = null;
   dataPuffer = '';
 
-  // 2. Dashboard-Daten-Zustand zurücksetzen
   resetDashboardDataOnly();
 
-  // 3. UI-Elemente und Sperren radikal auf Startzustand zwingen
   isCsvMode = false;
   document.getElementById('csvFileInput').disabled = false;
-  document.getElementById('csvFileInput').value = ''; // Input-Feld leeren!
-  document.getElementById('uploadLabel').classList.remove('disabled');
+  document.getElementById('csvFileInput').value = ''; 
+  
+  const upLabel = document.getElementById('uploadLabel');
+  upLabel.classList.remove('disabled');
+  upLabel.textContent = '📂 CSV hochladen';
   
   document.getElementById('connectBtn').disabled  = false;
   document.getElementById('connectBtn').textContent = '🔗 Logger verbinden';
   document.getElementById('connectBtn').className = 'btn btn-blue';
 
-  // 4. Hardware-Container & BLE-Status wieder sichtbar machen
   document.getElementById('liveHardwareContainer').style.display = '';
-  document.getElementById('pillBleContainer').style.display = '';
 
-  // 5. Hardware-Spiegel (OLED) reinigen
   const ctx = document.getElementById('oledCanvas').getContext('2d');
   ctx.clearRect(0,0,128,64);
   displayBuffer.fill(0);
   document.getElementById('oledInfo').textContent = 'Warte auf Verbindung…';
 
-  // 6. Buttons für Encoder sperren
   ['encL','encC','encR','encX'].forEach(id => document.getElementById(id).disabled = true);
 
-  // 7. Status und Konsole leeren
   updateStatus('disconnected');
   clearLog();
   log('Dashboard vollständig zurückgesetzt (Clean State).', 'info');
 });
 
-// Hilfsfunktion: Bereinigt alle dynamisch erzeugten Datenstrukturen & Charts
 function resetDashboardDataOnly() {
   document.querySelectorAll('.chart-card').forEach(el => el.remove());
   charts = {}; 
@@ -936,7 +955,6 @@ function resetDashboardDataOnly() {
   activeSensors.clear();
   csvStore  = ['timestamp,' + SENSOR_NAMES.join(',')];
   pktCount  = 0;
-  document.getElementById('lblPkts').textContent = 'Pakete: 0';
   
   if (map) { map.remove(); map = null; }
   gpsPts = []; 
