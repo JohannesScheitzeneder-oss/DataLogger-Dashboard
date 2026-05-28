@@ -64,12 +64,13 @@ header {
 .logo-dot.csv-mode { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: none; }
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
 
-/* ─── Status Bar ─────────────────────────────────────────────────────────── */
+/* ─── Status Bar (Standardmäßig ausgeblendet) ────────────────────────────── */
 #statusBar {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   padding: 8px 24px;
-  display: flex; gap: 24px; flex-wrap: wrap;
+  display: none; /* Erst einblenden bei Verbindung / CSV-Upload */
+  gap: 24px; flex-wrap: wrap;
   font-size: 12px; font-family: var(--font-mono);
 }
 .stat-pill {
@@ -418,52 +419,51 @@ function updateStatus(mode, gps, batt) {
   const dotBle = document.getElementById('dotBle');
   const lblPkts = document.getElementById('lblPkts');
   const dotPkts = document.getElementById('dotPkts');
+  const sBar = document.getElementById('statusBar');
 
   if (mode === 'connected') {
+    sBar.style.display = 'flex'; // Jetzt erst einblenden
+    
     dotBle.className = 'dot ok'; 
     lblBle.textContent = 'BLE: verbunden';
     connDot.className = 'logo-dot';
     headerStatus.textContent = 'Verbunden';
     headerStatus.style.color = 'var(--accent2)';
     
-    // Live-Modus: Pillen anzeigen & Text auf Pakete normieren
     document.getElementById('pillBleContainer').style.display = '';
     document.getElementById('pillGpsContainer').style.display = '';
     document.getElementById('pillBattContainer').style.display = '';
     dotPkts.className = 'dot ok';
     lblPkts.textContent = `Pakete: ${pktCount}`;
   } else if (mode === 'csv') {
+    sBar.style.display = 'flex'; // Jetzt erst einblenden
+    
     connDot.className = 'logo-dot csv-mode';
     
-    // CSV Modus: Unnötige Pillen ausblenden
     document.getElementById('pillBleContainer').style.display = 'none';
     document.getElementById('pillGpsContainer').style.display = 'none';
     document.getElementById('pillBattContainer').style.display = 'none';
     
-    // Paket-Pille auf Datenzeilen umschreiben und blau färben
     dotPkts.className = 'dot csv';
     lblPkts.textContent = `Datensätze: ${pktCount}`;
   } else {
+    // getrennt / Idle / frisch resettet -> Leiste komplett unsichtbar machen
+    sBar.style.display = 'none';
+    
     dotBle.className = 'dot'; 
     lblBle.textContent = 'BLE: getrennt';
     connDot.className = 'logo-dot disconnected';
     headerStatus.textContent = 'Nicht verbunden';
     headerStatus.style.color = 'var(--muted)';
-    
-    document.getElementById('pillBleContainer').style.display = '';
-    document.getElementById('pillGpsContainer').style.display = '';
-    document.getElementById('pillBattContainer').style.display = '';
-    dotPkts.className = 'dot ok';
-    lblPkts.textContent = `Pakete: ${pktCount}`;
   }
 
-  if (gps !== undefined && mode !== 'csv') {
+  if (gps !== undefined && mode === 'connected') {
     const dotGps = document.getElementById('dotGps');
     const lblGps = document.getElementById('lblGps');
     if (gps > 0) { dotGps.className='dot ok'; lblGps.textContent=`GPS: ${gps} Sats`; }
     else         { dotGps.className='dot warn'; lblGps.textContent='GPS: kein Fix'; }
   }
-  if (batt !== undefined && mode !== 'csv') {
+  if (batt !== undefined && mode === 'connected') {
     const dotBatt = document.getElementById('dotBatt');
     const lblBatt = document.getElementById('lblBatt');
     if (batt >= 3.8)      { dotBatt.className='dot ok';   lblBatt.textContent=`Batt: ${batt.toFixed(2)} V`; }
@@ -564,7 +564,6 @@ function verarbeiteZeile(zeile) {
   csvStore.push(zeile);
   pktCount++;
   
-  // Dynamische Benennung je nach Modus via updateStatus()
   updateStatus(bleDevice ? 'connected' : (isCsvMode ? 'csv' : 'disconnected'));
 
   const parts = zeile.split(',');
@@ -792,7 +791,6 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     btn.className   = 'btn btn-red';
     document.getElementById('downloadBtn').disabled = false;
     
-    // NEU: Upload-Label im Live-Modus sperren und Text anpassen
     const upLabel = document.getElementById('uploadLabel');
     upLabel.classList.add('disabled');
     upLabel.textContent = '🔒 Gesperrt (Live-Modus)';
@@ -878,7 +876,6 @@ document.getElementById('csvFileInput').addEventListener('change', function() {
 
     resetDashboardDataOnly();
     
-    // In reinen CSV-Modus wechseln & Live-Spiegel ausblenden (Konsole bleibt da)
     isCsvMode = true; 
     document.getElementById('liveHardwareContainer').style.display = 'none';
 
@@ -908,7 +905,7 @@ document.getElementById('downloadBtn').addEventListener('click', () => {
   log('Aktuelle Tabellendaten als neue CSV gespeichert.', 'info');
 });
 
-// ─── Reset (Vollständiger Clean-State) ────────────────────────────────────
+// ─── Reset (Inklusive Verstecken der Statusleiste!) ────────────────────────
 document.getElementById('resetBtn').addEventListener('click', () => {
   if (!confirm('Dashboard komplett zurücksetzen? Alle Daten und Verbindungen werden gelöscht.')) return;
   
@@ -943,6 +940,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 
   ['encL','encC','encR','encX'].forEach(id => document.getElementById(id).disabled = true);
 
+  // Setzt den Status zurück und schaltet das statusBar-div komplett auf display: none
   updateStatus('disconnected');
   clearLog();
   log('Dashboard vollständig zurückgesetzt (Clean State).', 'info');
